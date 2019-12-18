@@ -3,7 +3,6 @@
 namespace Admin\Widgets;
 
 use Admin\Classes\BaseWidget;
-use Event;
 use Html;
 use Template;
 
@@ -15,8 +14,6 @@ class Toolbar extends BaseWidget
 
     protected $previewMode = FALSE;
 
-    public $showToolbar = FALSE;
-
     /**
      * @var array List of CSS classes to apply to the toolbar container element
      */
@@ -27,8 +24,16 @@ class Toolbar extends BaseWidget
     public function initialize()
     {
         $this->fillFromConfig([
+            'buttons',
             'context',
+            'cssClasses',
         ]);
+    }
+
+    public function reInitialize(array $config)
+    {
+        $this->setConfig($config);
+        $this->initialize();
     }
 
     public function render()
@@ -86,10 +91,7 @@ class Toolbar extends BaseWidget
             return $buttons;
         }
 
-        $this->showToolbar = TRUE;
-
-        Event::fire('admin.toolbar.extendButtons', [$this]);
-        $this->fireEvent('toolbar.extendButtons', [$this]);
+        $this->fireSystemEvent('admin.toolbar.extendButtons');
 
         foreach ($this->buttons as $name => $attributes) {
             if (!is_array($attributes)) {
@@ -111,7 +113,7 @@ class Toolbar extends BaseWidget
             else {
                 foreach ($attributes as $key => $value) {
                     if ($key == 'href' AND !preg_match('#^(\w+:)?//#i', $value)) {
-                        $attributes[$key] = admin_url($value);
+                        $attributes[$key] = $this->controller->pageUrl($value);
                     }
                     else if (is_string($value)) {
                         $attributes[$key] = lang($value);

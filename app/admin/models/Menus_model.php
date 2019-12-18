@@ -1,10 +1,10 @@
 <?php namespace Admin\Models;
 
 use Admin\Traits\Locationable;
-use Igniter\Flame\ActivityLog\Traits\LogsActivity;
+use Event;
+use Igniter\Flame\Database\Attach\HasMedia;
+use Igniter\Flame\Database\Model;
 use Igniter\Flame\Database\Traits\Purgeable;
-use Main\Models\Image_tool_model;
-use Model;
 
 /**
  * Menus Model Class
@@ -13,13 +13,11 @@ use Model;
  */
 class Menus_model extends Model
 {
-    use LogsActivity;
     use Purgeable;
     use Locationable;
+    use HasMedia;
 
     const LOCATIONABLE_RELATION = 'locations';
-
-    protected static $recordEvents = ['created', 'deleted'];
 
     /**
      * @var string The database table name
@@ -31,30 +29,41 @@ class Menus_model extends Model
      */
     protected $primaryKey = 'menu_id';
 
-    protected $fillable = ['menu_name', 'menu_description', 'menu_price', 'menu_photo', 'menu_category_id',
-        'stock_qty', 'minimum_qty', 'subtract_stock', 'mealtime_id', 'menu_status', 'menu_priority'];
+    protected $guarded = [];
 
-    public $purgeable = [
-        'special', 'menu_options', 'categories', 'locations',
+    public $casts = [
+        'menu_price' => 'float',
+        'menu_category_id' => 'integer',
+        'mealtime_id' => 'integer',
+        'stock_qty' => 'integer',
+        'minimum_qty' => 'integer',
+        'subtract_stock' => 'boolean',
+        'order_restriction' => 'integer',
+        'menu_status' => 'boolean',
+        'menu_priority' => 'integer',
     ];
 
     public $relation = [
-        'hasMany'       => [
+        'hasMany' => [
             'menu_options' => ['Admin\Models\Menu_item_options_model', 'delete' => TRUE],
         ],
-        'hasOne'        => [
+        'hasOne' => [
             'special' => ['Admin\Models\Menus_specials_model', 'delete' => TRUE],
         ],
-        'belongsTo'     => [
+        'belongsTo' => [
             'mealtime' => ['Admin\Models\Mealtimes_model'],
         ],
         'belongsToMany' => [
             'categories' => ['Admin\Models\Categories_model', 'table' => 'menu_categories'],
         ],
-        'morphToMany'   => [
+        'morphToMany' => [
             'locations' => ['Admin\Models\Locations_model', 'name' => 'locationable'],
         ],
     ];
+
+    protected $purgeable = ['special', 'menu_options', 'categories', 'locations'];
+
+    public $mediable = ['thumb'];
 
     public static $allowedSortingColumns = ['menu_priority asc', 'menu_priority desc'];
 
@@ -62,15 +71,23 @@ class Menus_model extends Model
     // Scopes
     //
 
+    public function scopeWhereHasCategory($query, $categoryId)
+    {
+        $query->whereHas('categories', function ($q) use ($categoryId) {
+            $q->where('categories.category_id', $categoryId);
+        });
+    }
+
     public function scopeListFrontEnd($query, $options = [])
     {
         extract(array_merge([
-            'page'      => 1,
+            'page' => 1,
             'pageLimit' => 20,
-            'sort'      => 'menu_priority asc',
-            'group'     => null,
-            'location'  => null,
-            'category'  => null,
+            'enabled' => TRUE,
+            'sort' => 'menu_priority asc',
+            'group' => null,
+            'location' => null,
+            'category' => null,
         ], $options));
 
         if (strlen($location) AND is_numeric($location)) {
@@ -104,23 +121,31 @@ class Menus_model extends Model
             });
         }
 
+        if ($enabled) {
+            $query->isEnabled();
+        }
+
         return $query->paginate($pageLimit, $page);
+    }
+
+    public function scopeIsEnabled($query)
+    {
+        return $query->where('menu_status', 1);
     }
 
     //
     // Events
     //
 
-    public function afterSave()
+    protected function afterSave()
     {
         $this->restorePurgedValues();
 
         if (array_key_exists('special', $this->attributes))
             $this->addMenuSpecial((array)$this->attributes['special']);
 
-        if (array_key_exists('categories', $this->attributes)) {
+        if (array_key_exists('categories', $this->attributes))
             $this->addMenuCategories((array)$this->attributes['categories']);
-        }
 
         if (array_key_exists('locations', $this->attributes))
             $this->locations()->sync($this->attributes['locations']);
@@ -129,7 +154,7 @@ class Menus_model extends Model
             $this->addMenuOption((array)$this->attributes['menu_options']);
     }
 
-    public function beforeDelete()
+    protected function beforeDelete()
     {
         $this->addMenuCategories([]);
         $this->locations()->detach();
@@ -139,19 +164,6 @@ class Menus_model extends Model
     // Helpers
     //
 
-    public function getMessageForEvent($eventName)
-    {
-        return parse_values(['event' => $eventName], lang('admin::lang.menus.activity_event_log'));
-    }
-
-    public function getThumb($options = [])
-    {
-        return Image_tool_model::resize($this->menu_photo, array_merge([
-            'width'  => is_numeric(setting('menu_images_w')) ? setting('menu_images_w') : '50',
-            'height' => is_numeric(setting('menu_images_h')) ? setting('menu_images_h') : '50',
-        ], $options));
-    }
-
     public function hasOptions()
     {
         return count($this->menu_options);
@@ -160,25 +172,27 @@ class Menus_model extends Model
     /**
      * Subtract or add to menu stock quantity
      *
-     * @param int $menu_id
      * @param int $quantity
-     * @param string $action
-     *
+     * @param bool $subtract
      * @return bool TRUE on success, or FALSE on failure
      */
-    public function updateStock($quantity = 0, $action = 'subtract')
+    public function updateStock($quantity = 0, $subtract = TRUE)
     {
-        $update = FALSE;
+        if (!$this->subtract_stock)
+            return FALSE;
 
-        if ($this->subtract_stock AND !empty($quantity)) {
-            $stock_qty = $this->stock_qty + $quantity;
+        if ($this->stock_qty == 0)
+            return FALSE;
 
-            if ($action == 'subtract') {
-                $stock_qty = $this->stock_qty - $quantity;
-            }
+        $stockQty = ($subtract === TRUE)
+            ? $this->stock_qty - $quantity
+            : $this->stock_qty + $quantity;
 
-            $update = $this->update(['stock_qty' => $stock_qty]);
-        }
+        $stockQty = ($stockQty <= 0) ? -1 : $stockQty;
+
+        $update = $this->update(['stock_qty' => $stockQty]);
+
+        Event::fire('admin.menu.stockUpdated', [$this, $quantity, $subtract]);
 
         return $update;
     }
@@ -190,7 +204,7 @@ class Menus_model extends Model
      *
      * @return bool
      */
-    protected function addMenuCategories(array $categoryIds = [])
+    public function addMenuCategories(array $categoryIds = [])
     {
         if (!$this->exists)
             return FALSE;
@@ -215,7 +229,7 @@ class Menus_model extends Model
         foreach ($menuOptions as $option) {
             $option['menu_id'] = $menuId;
             $menuOption = $this->menu_options()->firstOrNew([
-                'menu_option_id' => $option['menu_option_id'],
+                'menu_option_id' => array_get($option, 'menu_option_id'),
             ])->fill(array_except($option, ['menu_option_id']));
 
             $menuOption->saveOrFail();
@@ -235,7 +249,7 @@ class Menus_model extends Model
      *
      * @return bool
      */
-    protected function addMenuSpecial(array $menuSpecial = [])
+    public function addMenuSpecial(array $menuSpecial = [])
     {
         $menuId = $this->getKey();
         if (!is_numeric($menuId) OR !isset($menuSpecial['special_id']))

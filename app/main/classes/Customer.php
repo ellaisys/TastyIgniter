@@ -70,27 +70,24 @@ class Customer extends \Igniter\Flame\Auth\Manager
      *
      * @param array $credentials
      *
+     * @param bool $activate
      * @return \Admin\Models\Customers_model
      * @throws \Exception
      */
-    public function register(array $credentials)
+    public function register(array $credentials, $activate = FALSE)
     {
         $model = $this->createModel();
         $model->fill($credentials);
         $model->save();
 
+        if ($activate) {
+            $model->completeActivation($model->getActivationCode());
+        }
+
         // Prevents subsequent saves to this model object
         $model->password = null;
 
         return $this->user = $model;
-    }
-
-    public function updateCart()
-    {
-//        $this->CI->db->set('cart', ($cart_contents = $this->CI->cart->contents()) ? serialize($cart_contents) : '');
-//        $this->CI->db->where('customer_id', $this->customer_id);
-//        $this->CI->db->where('email', $this->email);
-//        $this->CI->db->update('customers');
     }
 
     //

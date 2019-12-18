@@ -2,9 +2,13 @@
 
 use Admin\Traits\WidgetMaker;
 use AdminMenu;
+use Event;
 use Exception;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Main\Classes\ThemeManager;
 use Request;
+use System\Libraries\Assets;
 use System\Models\Themes_model;
 use System\Traits\ConfigMaker;
 use SystemException;
@@ -21,23 +25,23 @@ class Themes extends \Admin\Classes\AdminController
 
     public $listConfig = [
         'list' => [
-            'model'        => 'System\Models\Themes_model',
-            'title'        => 'lang:system::lang.themes.text_title',
+            'model' => 'System\Models\Themes_model',
+            'title' => 'lang:system::lang.themes.text_title',
             'emptyMessage' => 'lang:system::lang.themes.text_empty',
-            'defaultSort'  => ['date_added', 'DESC'],
-            'configFile'   => 'themes_model',
+            'defaultSort' => ['date_added', 'DESC'],
+            'configFile' => 'themes_model',
         ],
     ];
 
     public $formConfig = [
-        'name'       => 'lang:system::lang.themes.text_form_name',
-        'model'      => 'System\Models\Themes_model',
-        'edit'       => [
-            'title'         => 'lang:admin::lang.form.edit_title',
-            'redirect'      => 'themes/edit/{code}',
+        'name' => 'lang:system::lang.themes.text_form_name',
+        'model' => 'System\Models\Themes_model',
+        'edit' => [
+            'title' => 'lang:admin::lang.form.edit_title',
+            'redirect' => 'themes/edit/{code}',
             'redirectClose' => 'themes',
         ],
-        'delete'     => [
+        'delete' => [
             'redirect' => 'themes',
         ],
         'configFile' => 'themes_model',
@@ -53,13 +57,21 @@ class Themes extends \Admin\Classes\AdminController
      */
     public $toolbarWidget;
 
+    protected $requiredPermissions = 'Site.Themes';
+
     public function __construct()
     {
         parent::__construct();
 
-        Themes_model::syncAll();
-
         AdminMenu::setContext('themes', 'design');
+    }
+
+    public function index()
+    {
+        if ($this->getUser()->hasPermission('Site.Themes.Manage'))
+            Themes_model::syncAll();
+
+        $this->asExtension('ListController')->index();
     }
 
     public function edit($context, $themeCode = null)
@@ -71,7 +83,7 @@ class Themes extends \Admin\Classes\AdminController
 
             Template::setButton(lang('system::lang.themes.button_source'), [
                 'class' => 'btn btn-default',
-                'href'  => admin_url('themes/source/'.$themeCode),
+                'href' => admin_url('themes/source/'.$themeCode),
             ]);
 
             $model = $this->formFindModelObject($themeCode);
@@ -91,7 +103,7 @@ class Themes extends \Admin\Classes\AdminController
 
             Template::setButton(lang('system::lang.themes.button_customize'), [
                 'class' => 'btn btn-default',
-                'href'  => admin_url('themes/edit/'.$themeCode),
+                'href' => admin_url('themes/edit/'.$themeCode),
             ]);
 
             $model = $this->formFindModelObject($themeCode);
@@ -175,7 +187,7 @@ class Themes extends \Admin\Classes\AdminController
         $this->initFormWidget($model, $context);
 
         if ($this->formValidate($model, $this->formWidget) === FALSE)
-            return;
+            return Request::ajax() ? ['#notification' => $this->makePartial('flash')] : FALSE;
 
         $model->setAttribute('data', $this->formWidget->getSaveData());
 
@@ -185,6 +197,8 @@ class Themes extends \Admin\Classes\AdminController
         else {
             flash()->warning(sprintf(lang('admin::lang.alert_error_nothing'), 'updated'));
         }
+
+        $this->formAfterSave($model);
 
         return $this->refresh();
     }
@@ -207,7 +221,7 @@ class Themes extends \Admin\Classes\AdminController
         });
 
         if ($this->formValidate($model, $this->formWidget) === FALSE)
-            return;
+            return Request::ajax() ? ['#notification' => $this->makePartial('flash')] : FALSE;
 
         list($fileName, $attributes) = $this->getFileAttributes();
 
@@ -309,8 +323,8 @@ class Themes extends \Admin\Classes\AdminController
         $theme = ThemeManager::instance()->findTheme($themeCode);
         $meta = $theme->config;
 
-        if (Themes_model::deleteTheme($themeCode, (post('delete_data') == 1))) {
-            $name = isset($meta['name']) ? $meta['name'] : '';
+        if (Themes_model::deleteTheme($themeCode, post('delete_data') == 1)) {
+            $name = $meta['name'] ?? '';
 
             flash()->success(sprintf(lang('admin::lang.alert_success'), "Theme {$name} deleted "));
         }
@@ -389,7 +403,7 @@ class Themes extends \Admin\Classes\AdminController
         // Prep the optional toolbar widget
         if (isset($modelConfig['toolbar']) AND isset($this->widgets['toolbar'])) {
             $this->toolbarWidget = $this->widgets['toolbar'];
-            $this->toolbarWidget->addButtons(array_get($modelConfig['toolbar'], 'buttons', []));
+            $this->toolbarWidget->reInitialize($modelConfig['toolbar']);
         }
     }
 
@@ -472,6 +486,42 @@ class Themes extends \Admin\Classes\AdminController
             $form->data->fileSource->mTime : null);
     }
 
+    public function formAfterSave($model)
+    {
+        if (!$model->getFieldsConfig())
+            return;
+
+        $this->buildAssetsBundle($model);
+    }
+
+    public function formValidate($model, $form)
+    {
+        $rules = [];
+        if ($form->context != 'source') {
+            foreach ($model->getFieldsConfig() as $name => $field) {
+                if (!array_key_exists('rules', $field))
+                    continue;
+
+                $dottedName = implode('.', name_to_array($name));
+                $rules[] = [$dottedName, $field['label'], $field['rules']];
+            }
+        }
+        else {
+            $rules = [
+                ['file', 'Source File', 'required'],
+                ['markup', 'lang:system::lang.themes.text_tab_markup', 'sometimes'],
+                ['codeSection', 'lang:system::lang.themes.text_tab_php_section', 'sometimes'],
+                ['settings.components.*.alias', 'lang:system::lang.themes.label_component_alias', 'sometimes|required|alpha'],
+                ['settings.title', 'lang:system::lang.themes.label_title', 'sometimes|required|max:160'],
+                ['settings.description', 'lang:admin::lang.label_description', 'sometimes|max:255'],
+                ['settings.layout', 'lang:system::lang.themes.label_layout', 'sometimes|string'],
+                ['settings.permalink', 'lang:system::lang.themes.label_permalink', 'sometimes|required|string'],
+            ];
+        }
+
+        return $this->validatePasses(array_undot(post($form->arrayName)), $rules);
+    }
+
     protected function createModel()
     {
         $class = $this->formConfig['model'];
@@ -510,34 +560,6 @@ class Themes extends \Admin\Classes\AdminController
         return TRUE;
     }
 
-    public function formValidate($model, $form)
-    {
-        $rules = [];
-        if ($form->context != 'source') {
-            foreach ($model->getFieldsConfig() as $name => $field) {
-                if (!array_key_exists('rules', $field))
-                    continue;
-
-                $dottedName = implode('.', name_to_array($name));
-                $rules[] = [$dottedName, $field['label'], $field['rules']];
-            }
-        }
-        else {
-            $rules = [
-                ['file', 'Source File', 'required'],
-                ['markup', 'lang:system::lang.themes.text_tab_markup', 'sometimes'],
-                ['codeSection', 'lang:system::lang.themes.text_tab_php_section', 'sometimes'],
-                ['settings.components.*.alias', 'lang:system::lang.themes.label_component_alias', 'sometimes|required|alpha'],
-                ['settings.title', 'lang:system::lang.themes.label_title', 'sometimes|required|max:160'],
-                ['settings.description', 'lang:system::lang.themes.label_description', 'sometimes|max:255'],
-                ['settings.layout', 'lang:system::lang.themes.label_layout', 'sometimes|string'],
-                ['settings.permalink', 'lang:system::lang.themes.label_permalink', 'sometimes|required|string'],
-            ];
-        }
-
-        return $this->validatePasses(post($form->arrayName), $rules);
-    }
-
     protected function prepareFilesList($themeCode, $currentFile = null)
     {
         return function () use ($themeCode, $currentFile) {
@@ -567,9 +589,9 @@ class Themes extends \Admin\Classes\AdminController
         $code = trim($code, PHP_EOL);
 
         $attributes = [
-            'code'   => $code,
+            'code' => $code,
             'markup' => array_get($fileData, 'markup'),
-            'data'   => $this->parseComponents(array_get($fileData, 'settings')),
+            'data' => $this->parseComponents(array_get($fileData, 'settings')),
         ];
 
         return [$fileName, $attributes];
@@ -593,7 +615,7 @@ class Themes extends \Admin\Classes\AdminController
         return $settings;
     }
 
-    private function parseComponentPropertyValues($properties)
+    protected function parseComponentPropertyValues($properties)
     {
         $properties = array_map(function (&$propertyValue) {
             if (is_numeric($propertyValue))
@@ -603,5 +625,27 @@ class Themes extends \Admin\Classes\AdminController
         }, $properties);
 
         return $properties;
+    }
+
+    protected function buildAssetsBundle($model)
+    {
+        \Assets::addFromManifest($model->themeClass->publicPath.'/_meta/assets.json');
+
+        Event::listen('assets.combiner.beforePrepare', function (Assets $combiner, $assets) {
+            ThemeManager::applyAssetVariablesOnCombinerFilters(
+                array_flatten($combiner->getFilters())
+            );
+        });
+
+        try {
+            Artisan::call('igniter:util', ['name' => 'compile scss']);
+            Artisan::call('igniter:util', ['name' => 'compile js']);
+
+            flash()->success(sprintf(lang('admin::lang.alert_success'), 'Theme assets bundle built '));
+        }
+        catch (Exception $ex) {
+            Log::error($ex);
+            flash()->error('Building assets bundle error: '.$ex->getMessage())->important();
+        }
     }
 }

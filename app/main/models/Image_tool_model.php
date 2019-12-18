@@ -1,6 +1,6 @@
 <?php namespace Main\Models;
 
-use Main\Libraries\MediaManager;
+use Main\Classes\MediaLibrary;
 use Model;
 
 /**
@@ -9,21 +9,17 @@ use Model;
  */
 class Image_tool_model extends Model
 {
-    public static function resize($imgPath, $width = null, $height = null)
+    public static function resize($path, $width = 0, $height = 0)
     {
-        extract(array_merge([
-            'width'   => is_array($width) ? null : $width,
-            'height'  => $height,
-            'crop'    => FALSE,
-            'default' => 'no_photo.png',
-        ], is_array($width) ? $width : []));
+        $options = array_merge([
+            'width' => is_array($width) ? 0 : $width,
+            'height' => $height,
+        ], is_array($width) ? $width : []);
 
-        // @todo implement image manipulator
+        $rootFolder = config('system.assets.media.folder', 'data').'/';
+        if (starts_with($path, $rootFolder))
+            $path = substr($path, strlen($rootFolder));
 
-        $rootFolder = 'data/';
-        if (strpos($imgPath, $rootFolder) === 0)
-            $imgPath = substr($imgPath, strlen($rootFolder));
-
-        return MediaManager::instance()->getMediaUrl($imgPath);
+        return MediaLibrary::instance()->getMediaThumb($path, $options);
     }
 }

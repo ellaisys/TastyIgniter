@@ -1,6 +1,5 @@
 <?php namespace System\Models;
 
-use Igniter\Flame\ActivityLog\Traits\LogsActivity;
 use Model;
 use System\Classes\ExtensionManager;
 
@@ -10,8 +9,6 @@ use System\Classes\ExtensionManager;
  */
 class Permissions_model extends Model
 {
-    use LogsActivity;
-
     /**
      * @var string The database table name
      */
@@ -24,12 +21,15 @@ class Permissions_model extends Model
 
     public $casts = [
         'action' => 'serialize',
+        'status' => 'boolean',
+        'is_custom' => 'boolean',
     ];
 
     protected static $permissionDefaults = [
-        'name'        => null,
+        'name' => null,
         'description' => null,
-        'action'      => ['access', 'add', 'manage', 'delete'],
+        'group' => null,
+        'action' => ['access', 'add', 'manage', 'delete'],
     ];
 
     /**
@@ -71,17 +71,12 @@ class Permissions_model extends Model
     // Helpers
     //
 
-    public function getMessageForEvent($eventName)
-    {
-        return parse_values(['event' => $eventName], lang('system::lang.permissions.activity_event_log'));
-    }
-
     public function getActionOptions()
     {
         return [
             'access' => lang('system::lang.permissions.text_access'),
             'manage' => lang('system::lang.permissions.text_manage'),
-            'add'    => lang('system::lang.permissions.text_add'),
+            'add' => lang('system::lang.permissions.text_add'),
             'delete' => lang('system::lang.permissions.text_delete'),
         ];
     }
@@ -188,14 +183,12 @@ class Permissions_model extends Model
             $callback($this);
         }
 
-        $extensions = ExtensionManager::instance()->getExtensions();
-        foreach ($extensions as $extensionId => $extensionObj) {
-            $permissions = $extensionObj->registerPermissions();
-            if (!is_array($permissions)) {
+        $permissionBundles = ExtensionManager::instance()->getRegistrationMethodValues('registerPermissions');
+        foreach ($permissionBundles as $permissionBundle) {
+            if (!is_array($permissionBundle))
                 continue;
-            }
 
-            $this->registerPermissions($permissions);
+            $this->registerPermissions($permissionBundle);
         }
     }
 
@@ -209,10 +202,11 @@ class Permissions_model extends Model
         }
 
         foreach ($definitions as $name => $definition) {
-            $permission = (object)array_merge(self::$permissionDefaults, array_merge($definition, [
-                'name'  => $name,
-                'group' => current(explode('.', $name)),
-            ]));
+            $permission = (object)array_merge(self::$permissionDefaults, array_merge([
+                'group' => strtolower(current(explode('.', $name))),
+            ], $definition));
+
+            $permission->name = $name;
 
             static::$registeredPermissions[$permission->name] = $permission;
         }

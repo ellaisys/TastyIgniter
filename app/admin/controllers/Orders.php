@@ -1,6 +1,7 @@
 <?php namespace Admin\Controllers;
 
 use AdminMenu;
+use Igniter\Flame\Exception\ApplicationException;
 
 class Orders extends \Admin\Classes\AdminController
 {
@@ -11,27 +12,28 @@ class Orders extends \Admin\Classes\AdminController
 
     public $listConfig = [
         'list' => [
-            'model'        => 'Admin\Models\Orders_model',
-            'title'        => 'lang:admin::lang.orders.text_title',
+            'model' => 'Admin\Models\Orders_model',
+            'title' => 'lang:admin::lang.orders.text_title',
             'emptyMessage' => 'lang:admin::lang.orders.text_empty',
-            'defaultSort'  => ['order_date', 'DESC'],
-            'configFile'   => 'orders_model',
+            'defaultSort' => ['order_id', 'DESC'],
+            'configFile' => 'orders_model',
         ],
     ];
 
     public $formConfig = [
-        'name'       => 'lang:admin::lang.orders.text_form_name',
-        'model'      => 'Admin\Models\Orders_model',
-        'edit'       => [
-            'title'         => 'lang:admin::lang.form.edit_title',
-            'redirect'      => 'orders/edit/{order_id}',
+        'name' => 'lang:admin::lang.orders.text_form_name',
+        'model' => 'Admin\Models\Orders_model',
+        'request' => 'Admin\Requests\Order',
+        'edit' => [
+            'title' => 'lang:admin::lang.form.edit_title',
+            'redirect' => 'orders/edit/{order_id}',
             'redirectClose' => 'orders',
         ],
-        'preview'    => [
-            'title'    => 'lang:admin::lang.form.preview_title',
+        'preview' => [
+            'title' => 'lang:admin::lang.form.preview_title',
             'redirect' => 'orders',
         ],
-        'delete'     => [
+        'delete' => [
             'redirect' => 'orders',
         ],
         'configFile' => 'orders_model',
@@ -49,6 +51,9 @@ class Orders extends \Admin\Classes\AdminController
     public function invoice($context, $recordId = null)
     {
         $model = $this->formFindModelObject($recordId);
+
+        if (!$model->hasInvoice())
+            throw new ApplicationException('Invoice has not yet been generated');
 
         $this->vars['model'] = $model;
 
@@ -91,23 +96,9 @@ class Orders extends \Admin\Classes\AdminController
     public function formExtendQuery($query)
     {
         $query->with([
-            'assignee',         // Eager loaded for LogsActivities
             'status_history' => function ($q) {
                 $q->orderBy('date_added', 'desc');
             },
         ]);
-    }
-
-    public function formValidate($model, $form)
-    {
-        $namedRules = [
-            ['status_id', 'lang:admin::lang.label_status', 'required|integer|exists:statuses'],
-            ['statusData.status_id', 'lang:admin::lang.orders.label_status', 'required|same:status_id'],
-            ['statusData.comment', 'lang:admin::lang.orders.label_comment', 'max:1500'],
-            ['statusData.notify', 'lang:admin::lang.orders.label_notify', 'required|integer'],
-            ['assignee_id', 'lang:admin::lang.orders.label_assign_staff', 'required|integer'],
-        ];
-
-        return $this->validatePasses(post($form->arrayName), $namedRules);
     }
 }

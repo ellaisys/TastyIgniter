@@ -1,46 +1,37 @@
 <?php foreach (Flash::all() as $message) { ?>
     <?php if ($message['overlay']) { ?>
-        <?= $this->makePartial('flash_modal', [
-            'modalClass' => 'flash-modal',
-            'title'      => $message['title'],
-            'body'       => $message['message'],
-        ]); ?>
+        <div
+            data-control="flash-overlay"
+            data-title="<?= array_get($message, 'title') ?>"
+            data-text="<?= array_get($message, 'message') ?>"
+            data-icon="<?= $message['level']; ?>"
+            data-close-on-click-outside="<?= $message['important'] ? 'false' : 'true'; ?>"
+            data-close-on-esc="<?= $message['important'] ? 'false' : 'true'; ?>"
+        ></div>
     <?php }
     else { ?>
-        <div class="alert alert-<?= $message['level']; ?> <?= $message['important'] ? 'alert-important' : ''; ?>"
-             role="alert"
-        >
-            <button type="button"
-                    class="close"
-                    data-dismiss="alert"
-                    aria-hidden="true"
-            >&times;</button>
-            <?= $message['message']; ?>
-        </div>
+        <div
+            class="alert alert-<?= $message['level']; ?><?= $message['important'] ? ' alert-important' : ''; ?>"
+            data-control="flash-message"
+            data-allow-dismiss="<?= $message['important'] ? 'false' : 'true'; ?>"
+            role="alert"
+        ><?= $message['message']; ?></div>
     <?php } ?>
 <?php } ?>
 
 <?php if (AdminAuth::isLogged()) { ?>
-    <?php if ($messages = session('errors', collect())->all()) { ?>
-        <div class="alert-collapse">
-            <div class="alert alert-danger"
-                 role="button"
-                 data-toggle="collapse"
-                 href="#collapseErrors"
-                 aria-expanded="false"
-                 aria-controls="collapseErrors">
-                <i class="fa fa-angle-down"></i>
-                <b><?= lang('admin::lang.alert_form_error_message') ?></b>
-            </div>
-
-            <div class="collapse" id="collapseErrors">
-                <?php foreach ($messages as $message) { ?>
-                    <div class="alert alert-danger" role="alert">
-                        <?= $message; ?>
-                    </div>
-                <?php } ?>
-            </div>
+    <?php if ($messages = session('admin_errors', collect())->all()) { ?>
+        <div
+            class="alert alert-danger"
+            data-control="flash-message"
+            data-allow-dismiss="false"
+            role="alert"
+        >
+            <b><?= lang('admin::lang.alert_form_error_message') ?></b>
+            <?php foreach ($messages as $message) { ?>
+                <p><?= $message; ?></p>
+            <?php } ?>
         </div>
-        <?php session()->forget('errors'); ?>
+        <?php session()->forget('admin_errors'); ?>
     <?php } ?>
 <?php } ?>

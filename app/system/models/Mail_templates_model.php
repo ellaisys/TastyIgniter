@@ -1,12 +1,9 @@
 <?php namespace System\Models;
 
 use File;
-use Igniter\Flame\Support\StringParser;
-use Main\Models\Image_tool_model;
+use Igniter\Flame\Mail\MailParser;
 use Model;
-use October\Rain\Mail\MailParser;
-use System\Classes\ExtensionManager;
-use System\Helpers\ViewHelper;
+use System\Classes\MailManager;
 use View;
 
 /**
@@ -26,7 +23,11 @@ class Mail_templates_model extends Model
 
     protected $primaryKey = 'template_data_id';
 
-    protected $fillable = ['template_id', 'code', 'label', 'subject', 'body', 'plain_body'];
+    protected $guarded = [];
+
+    public $casts = [
+        'template_id' => 'integer',
+    ];
 
     public $relation = [
         'belongsTo' => [
@@ -41,36 +42,7 @@ class Mail_templates_model extends Model
      */
     public $timestamps = TRUE;
 
-    protected static $defaultTemplateCodes = [
-        'registration',
-        'registration_alert',
-        'password_reset_request',
-        'password_reset_request_alert',
-        'password_reset',
-        'password_reset_alert',
-        'order',
-        'order_alert',
-        'order_update',
-        'reservation',
-        'reservation_alert',
-        'reservation_update',
-        'internal',
-        'contact',
-    ];
-
-    /**
-     * @var array A cache of templates.
-     */
-    protected static $templateCache = [];
-
-    /**
-     * @var array Cache of registration callbacks.
-     */
-    protected static $callbacks = [];
-
-    protected static $registeredTemplates;
-
-    public function afterFetch()
+    protected function afterFetch()
     {
         if (!$this->is_custom) {
             $this->fillFromView();
@@ -85,27 +57,26 @@ class Mail_templates_model extends Model
     {
         $langLabel = !empty($this->attributes['label']) ? $this->attributes['label'] : '';
 
-        return (sscanf($langLabel, 'lang:%s', $lang) === 1) ? lang($langLabel) : $langLabel;
+        return is_lang_key($langLabel) ? lang($langLabel) : $langLabel;
     }
 
     public function getVariablesAttribute($value)
     {
         return [
-            'General'            => [
+            'General' => [
                 ['var' => '{site_name}', 'name' => 'Site name'],
                 ['var' => '{site_logo}', 'name' => 'Site logo'],
                 ['var' => '{site_url}', 'name' => 'Site URL'],
                 ['var' => '{signature}', 'name' => 'Signature'],
                 ['var' => '{location_name}', 'name' => 'Location name'],
             ],
-            'Customer'           => [
-                ['var' => '{full_name}', 'name' => 'Customer full name'],
+            'Customer' => [
                 ['var' => '{first_name}', 'name' => 'Customer first name'],
                 ['var' => '{last_name}', 'name' => 'Customer last name'],
                 ['var' => '{email}', 'name' => 'Customer email address'],
                 ['var' => '{telephone}', 'name' => 'Customer telephone address'],
             ],
-            'Staff'              => [
+            'Staff' => [
                 ['var' => '{staff_name}', 'name' => 'Staff name'],
                 ['var' => '{staff_username}', 'name' => 'Staff username'],
             ],
@@ -113,7 +84,8 @@ class Mail_templates_model extends Model
                 ['var' => '{account_login_link}', 'name' => 'Account login link'],
                 ['var' => '{reset_password}', 'name' => 'Created password on password reset'],
             ],
-            'Order'              => [
+            'Order' => [
+                ['var' => '{customer_name}', 'name' => 'Customer full name'],
                 ['var' => '{order_number}', 'name' => 'Order number'],
                 ['var' => '{order_view_url}', 'name' => 'Order view URL'],
                 ['var' => '{order_type}', 'name' => 'Order type ex. delivery/pick-up'],
@@ -135,7 +107,7 @@ class Mail_templates_model extends Model
                 ['var' => '{/order_totals}', 'name' => 'Order total pairs - END iteration'],
                 ['var' => '{order_comment}', 'name' => 'Order comment'],
             ],
-            'Reservation'        => [
+            'Reservation' => [
                 ['var' => '{reservation_number}', 'name' => 'Reservation number'],
                 ['var' => '{reservation_view_url}', 'name' => 'Reservation view URL'],
                 ['var' => '{reservation_date}', 'name' => 'Reservation date'],
@@ -143,11 +115,12 @@ class Mail_templates_model extends Model
                 ['var' => '{reservation_guest_no}', 'name' => 'No. of guest reserved'],
                 ['var' => '{reservation_comment}', 'name' => 'Reservation comment'],
             ],
-            'Status'             => [
+            'Status' => [
                 ['var' => '{status_name}', 'name' => 'Status name'],
                 ['var' => '{status_comment}', 'name' => 'Status comment'],
             ],
-            'Contact'            => [
+            'Contact' => [
+                ['var' => '{full_name}', 'name' => 'Customer full name'],
                 ['var' => '{contact_topic}', 'name' => 'Contact topic'],
                 ['var' => '{contact_telephone}', 'name' => 'Contact telephone'],
                 ['var' => '{contact_message}', 'name' => 'Contact message body'],
@@ -168,12 +141,21 @@ class Mail_templates_model extends Model
     // Helpers
     //
 
+    public function fillFromContent($content)
+    {
+        $this->fillFromSections(MailParser::parse($content));
+    }
+
     public function fillFromView()
     {
-        $sections = self::getTemplateSections($this->code);
+        $this->fillFromSections(self::getTemplateSections($this->code));
+    }
+
+    protected function fillFromSections(array $sections)
+    {
         $this->subject = array_get($sections, 'settings.subject', 'No subject');
-        $this->body = $sections['html'];
-        $this->plain_body = $sections['text'];
+        $this->body = array_get($sections, 'html');
+        $this->plain_body = array_get($sections, 'text');
 
         $layoutCode = array_get($sections, 'settings.layout', 'default');
         $this->template_id = Mail_layouts_model::getIdFromCode($layoutCode);
@@ -185,8 +167,11 @@ class Mail_templates_model extends Model
      */
     public static function syncAll()
     {
-        $templates = (array)(new static)->listRegisteredTemplates();
-        $dbTemplates = self::lists('is_custom', 'code')->toArray();
+        Mail_layouts_model::createLayouts();
+        Mail_partials_model::createPartials();
+
+        $templates = (array)MailManager::instance()->listRegisteredTemplates();
+        $dbTemplates = self::lists('is_custom', 'code')->all();
         $newTemplates = array_diff_key($templates, $dbTemplates);
 
         // Clean up non-customized templates
@@ -223,60 +208,10 @@ class Mail_templates_model extends Model
         return $template;
     }
 
-    public static function addContentToMailer($message, $code, $data)
-    {
-        if (isset(self::$templateCache[$code])) {
-            $template = self::$templateCache[$code];
-        }
-        else {
-            self::$templateCache[$code] = $template = self::findOrMakeTemplate($code);
-        }
-
-        $globalVars = ViewHelper::getGlobalVars();
-        if (!empty($globalVars)) {
-            $data = (array)$data + $globalVars;
-        }
-
-        if ($siteLogo = array_get($data, 'site_logo') AND !starts_with($siteLogo, ['//', 'http://', 'https://']))
-            $data['site_logo'] = Image_tool_model::resize($siteLogo, 200, 50);
-
-        $stringParser = new StringParser;
-
-        // Subject
-        $customSubject = $message->getSwiftMessage()->getSubject();
-        if (empty($customSubject)) {
-            $message->subject($stringParser->parse($template->subject, $data));
-        }
-
-        // HTML contents
-        $html = $stringParser->parse($template->body, $data);
-        if ($template->layout AND strlen($template->layout->layout)) {
-            $html = $stringParser->parse($template->layout->layout, [
-                    'body'       => $html,
-                    'layout_css' => $template->layout->layout_css,
-                ] + (array)$data);
-        }
-
-        $message->setBody($html, 'text/html');
-
-        // Text contents
-        if (strlen($template->plain_body)) {
-            $text = $stringParser->parse($template->plain_body, $data);
-            if ($template->layout AND strlen($template->layout->plain_layout)) {
-                $text = $stringParser->parse($template->layout->plain_layout, [
-                        'body' => $text,
-                    ] + (array)$data);
-            }
-
-            $cleanText = preg_replace('/<br\s?\/?>/i', "\r\n", $text);
-            $message->addPart($cleanText, 'text/plain');
-        }
-    }
-
     public static function listAllTemplates()
     {
-        $registeredTemplates = (array)(new static)->listRegisteredTemplates();
-        $dbTemplates = (array)self::isDefault()->get()->keyBy('code')->all();
+        $registeredTemplates = (array)MailManager::instance()->listRegisteredTemplates();
+        $dbTemplates = (array)self::lists('code', 'code');
         $templates = $registeredTemplates + $dbTemplates;
         ksort($templates);
 
@@ -293,71 +228,13 @@ class Mail_templates_model extends Model
     //
 
     /**
-     * Loads registered templates from extensions
-     * @return void
-     */
-    public function loadRegisteredTemplates()
-    {
-        foreach (static::$callbacks as $callback) {
-            $callback($this);
-        }
-
-        $extensions = ExtensionManager::instance()->getExtensions();
-        foreach ($extensions as $extensionId => $extensionObj) {
-            $templates = $extensionObj->registerMailTemplates();
-            if (!is_array($templates)) {
-                continue;
-            }
-
-            $this->registerTemplates($templates);
-        }
-    }
-
-    /**
-     * Returns a list of the registered templates.
-     * @return array
-     */
-    public function listRegisteredTemplates()
-    {
-        if (self::$registeredTemplates === null) {
-            $this->loadRegisteredTemplates();
-        }
-
-        return self::$registeredTemplates;
-    }
-
-    /**
-     * Registers templates.
-     */
-    public function registerTemplates(array $definitions)
-    {
-        if (!static::$registeredTemplates) {
-            static::$registeredTemplates = [];
-        }
-
-        foreach ($definitions as $view => $label) {
-            if (!is_string($view))
-                $view = $label;
-
-            static::$registeredTemplates[$view] = $label;
-        }
-    }
-
-    /**
-     * Registers a callback function that defines templates.
-     * The callback function should register templates by calling the manager's
-     * registerTemplates() function. This instance is passed to the
-     * callback function as an argument. Usage:
-     * <pre>
-     *   Mail_templates_model::registerCallback(function($template){
-     *       $template->registerTemplates([...]);
-     *   });
-     * </pre>
+     * @deprecated see System\Classes\MailManager::registerCallback
      *
      * @param callable $callback A callable function.
      */
     public static function registerCallback(callable $callback)
     {
-        self::$callbacks[] = $callback;
+        traceLog('Mail_templates_model::registerCallback is deprecated, use '.MailManager::class.'::registerCallback instead');
+        MailManager::instance()->registerCallback($callback);
     }
 }

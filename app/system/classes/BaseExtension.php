@@ -25,11 +25,6 @@ class BaseExtension extends ServiceProvider
     public $autoload = [];
 
     /**
-     * @var array Extension dependencies
-     */
-    public $require = [];
-
-    /**
      * @var boolean Determine if this extension should be loaded (false) or not (true).
      */
     public $disabled = FALSE;
@@ -42,9 +37,9 @@ class BaseExtension extends ServiceProvider
     }
 
     /**
-     * Initialize method, called right before the request route.
+     * Boot method, called right before the request route.
      */
-    public function initialize()
+    public function boot()
     {
     }
 
@@ -107,16 +102,26 @@ class BaseExtension extends ServiceProvider
     }
 
     /**
-     * Registers any report widgets provided by this extension.
+     * Registers scheduled tasks that are executed on a regular basis.
+     *
+     * @param string $schedule
+     * @return void
+     */
+    public function registerSchedule($schedule)
+    {
+    }
+
+    /**
+     * Registers any dashboard widgets provided by this extension.
      * @return array
      */
-    public function registerReportWidgets()
+    public function registerDashboardWidgets()
     {
         return [];
     }
 
     /**
-     * Registers any form widgets implemented in this plugin.
+     * Registers any form widgets implemented in this extension.
      * The widgets must be returned in the following format:
      * ['className1' => 'alias'],
      * ['className2' => 'anotherAlias']
@@ -142,11 +147,26 @@ class BaseExtension extends ServiceProvider
     }
 
     /**
+     * Registers a new console (artisan) command
+     *
+     * @param string $key The command name
+     * @param string $class The command class
+     * @return void
+     */
+    public function registerConsoleCommand($key, $class)
+    {
+        $key = 'command.'.$key;
+
+        $this->app->singleton($key, $class);
+
+        $this->commands($key);
+    }
+
+    /**
      * Read configuration from Config file
      *
-     * @param bool|null $throwException
-     *
      * @return array|bool
+     * @throws SystemException
      */
     protected function getConfigFromFile()
     {
@@ -154,13 +174,6 @@ class BaseExtension extends ServiceProvider
             return $this->config;
         }
 
-        $this->config = $this->loadConfig();
-
-        return $this->config;
-    }
-
-    protected function loadConfig()
-    {
         $className = get_class($this);
         $configPath = realpath(dirname(File::fromClass($className)));
         $configFile = $configPath.'/extension.json';
@@ -169,7 +182,7 @@ class BaseExtension extends ServiceProvider
             throw new SystemException("The configuration file for extension <b>{$className}</b> does not exist. ".
                 'Create the file or override extensionMeta() method in the extension class.');
 
-        $config = json_decode(File::get($configFile), TRUE);
+        $config = json_decode(File::get($configFile), TRUE) ?? [];
         foreach ([
                      'code',
                      'name',
@@ -187,6 +200,6 @@ class BaseExtension extends ServiceProvider
             }
         }
 
-        return $config;
+        return $this->config = $config;
     }
 }

@@ -10,8 +10,6 @@ use Admin\Classes\BaseFormWidget;
  */
 class CodeEditor extends BaseFormWidget
 {
-    const CHANGED_PREFIX = '___changed_';
-
     //
     // Configurable properties
     //
@@ -55,9 +53,6 @@ class CodeEditor extends BaseFormWidget
 
     public function loadAssets()
     {
-        $this->addCss('css/codeeditor.css', 'codeeditor-css');
-        $this->addJs('js/codeeditor.js', 'codeeditor-js');
-
         $this->addCss('vendor/codemirror/material.css', 'material-css');
         $this->addCss('vendor/codemirror/codemirror.css', 'codemirror-css');
         $this->addJs('vendor/codemirror/codemirror.js', 'codemirror-js');
@@ -67,6 +62,9 @@ class CodeEditor extends BaseFormWidget
         $this->addJs('vendor/codemirror/php/php.js', 'codemirror-php-js');
         $this->addJs('vendor/codemirror/htmlmixed/htmlmixed.js', 'codemirror-htmlmixed-js');
         $this->addJs('vendor/codemirror/clike/clike.js', 'codemirror-clike-js');
+
+        $this->addCss('css/codeeditor.css', 'codeeditor-css');
+        $this->addJs('js/codeeditor.js', 'codeeditor-js');
     }
 
     /**
@@ -84,15 +82,5 @@ class CodeEditor extends BaseFormWidget
         $this->vars['theme'] = $this->theme;
         $this->vars['name'] = $this->formField->getName();
         $this->vars['value'] = $this->getLoadValue();
-        $this->vars['changedName'] = self::CHANGED_PREFIX.strtolower($this->alias);
-    }
-
-    public function getSaveValue($value)
-    {
-        $name = self::CHANGED_PREFIX.strtolower($this->alias);
-        if (post($name) < 1)
-            return -1;
-
-        return $value;
     }
 }

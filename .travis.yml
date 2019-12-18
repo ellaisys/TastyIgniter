@@ -2,9 +2,9 @@ language: php
 
 # list of PHP version to test against
 php:
-  - 7.0
   - 7.1
   - 7.2
+  - 7.3
   - nightly
 
 matrix:
@@ -21,9 +21,9 @@ branches:
 
 before_script:
   - git reset --hard HEAD
-  - mysql -e 'create database homestead_test;'
+# Temporarily disable creating MySQL database until MySQL is working on Travis again.
+#  - mysql -e 'create database homestead_test;'
   - composer self-update
   - travis_retry composer install --no-interaction --prefer-source
 
-script: php artisan help
-#script: vendor/bin/phpunit --verbose
+script: vendor/bin/phpunit --verbose

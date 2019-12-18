@@ -55,12 +55,12 @@ class ListController extends ControllerAction
      */
     protected $filterWidgets = [];
 
-    public $requiredProperties = ['listConfig'];
+    protected $requiredProperties = ['listConfig'];
 
     /**
      * @var array Required controller configuration array keys
      */
-    public $requiredConfig = ['model', 'configFile'];
+    protected $requiredConfig = ['model', 'configFile'];
 
     /**
      * List_Controller constructor.
@@ -171,6 +171,7 @@ class ListController extends ControllerAction
         if (!$alias OR !isset($this->listConfig[$alias]))
             $alias = $this->primaryAlias;
 
+        $locationContext = $this->controller->locationContext();
         $listConfig = $this->controller->getListConfig($alias);
 
         $modelClass = $listConfig['model'];
@@ -186,6 +187,7 @@ class ListController extends ControllerAction
         $columnConfig['columns'] = $modelConfig['columns'];
         $columnConfig['model'] = $model;
         $columnConfig['alias'] = $alias;
+        $columnConfig['locationContext'] = $locationContext;
 
         $widget = $this->makeWidget('Admin\Widgets\Lists', array_merge($columnConfig, $listConfig));
 
@@ -198,6 +200,7 @@ class ListController extends ControllerAction
         });
 
         $widget->bindEvent('list.extendQuery', function ($query) use ($alias) {
+            $this->controller->applyLocationScope($query);
             $this->controller->listExtendQuery($query, $alias);
         });
 
@@ -215,13 +218,14 @@ class ListController extends ControllerAction
         if (isset($modelConfig['toolbar']) AND isset($this->controller->widgets['toolbar'])) {
             $this->toolbarWidget = $this->controller->widgets['toolbar'];
             if ($this->toolbarWidget instanceof \Admin\Widgets\Toolbar)
-                $this->toolbarWidget->addButtons(array_get($modelConfig['toolbar'], 'buttons', []));
+                $this->toolbarWidget->reInitialize($modelConfig['toolbar']);
         }
 
         // Prep the optional filter widget
         if (isset($modelConfig['filter'])) {
             $filterConfig = $modelConfig['filter'];
             $filterConfig['alias'] = "{$widget->alias}_filter";
+            $filterConfig['locationContext'] = $locationContext;
             $filterWidget = $this->makeWidget('Admin\Widgets\Filter', $filterConfig);
             $filterWidget->bindToController();
 
@@ -233,7 +237,7 @@ class ListController extends ControllerAction
                 });
 
                 $widget->setSearchOptions([
-                    'mode'  => $searchWidget->mode,
+                    'mode' => $searchWidget->mode,
                     'scope' => $searchWidget->scope,
                 ]);
 
@@ -243,6 +247,14 @@ class ListController extends ControllerAction
 
             $filterWidget->bindEvent('filter.submit', function () use ($widget, $filterWidget) {
                 return $widget->onRefresh();
+            });
+
+            $filterWidget->bindEvent('filter.extendScopesBefore', function () use ($filterWidget) {
+                $this->controller->listFilterExtendScopesBefore($filterWidget);
+            });
+
+            $filterWidget->bindEvent('filter.extendScopes', function ($scopes) use ($filterWidget) {
+                $this->controller->listFilterExtendScopes($filterWidget, $scopes);
             });
 
             $filterWidget->bindEvent('filter.extendQuery', function ($query, $scope) {
@@ -280,7 +292,7 @@ class ListController extends ControllerAction
 
     public function refreshList($alias = null)
     {
-        if (!count($this->listWidgets)) {
+        if (!$this->listWidgets) {
             $this->makeLists();
         }
 

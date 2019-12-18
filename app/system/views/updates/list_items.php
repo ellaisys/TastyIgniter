@@ -1,23 +1,23 @@
 <div class="container-fluid">
     <?php foreach ($items as $item) { ?>
-        <div class="row pt-3 pb-3 border-top">
-            <div class="col-sm-1 text-center align-middle">
-                <i class="fa <?= $item['icon'] ?> fa-2x text-muted"></i>
-            </div>
-            <div class="col col-sm-9">
-                <h5 class="<?= $ignored ? 'text-muted' : ''; ?>">
-                    <?= str_limit($item['name'], 22) ?> <i class="fa fa-long-arrow-right"></i>
-                    <span class="small">
-                        <?= sprintf(lang('system::lang.updates.text_item_update_summary'), $item['installedVer'], $item['version']) ?>
-                    </span>
-                </h5>
-                <?php if (isset($item['tags']['data'][0]) AND $tag = $item['tags']['data'][0]) { ?>
-                    <p class="<?= $ignored ? 'text-muted ' : ''; ?>small">
-                        <strong><?= $tag['tag']; ?>:</strong> <?= $tag['description'] ?>
-                    </p>
+        <div class="update-item row pt-3 pb-3 border-top <?= $ignored ? 'text-muted' : ''; ?>">
+            <div class="col-sm-1 pt-2 text-center text-muted">
+                <?php if ($item['type'] === 'core') { ?>
+                    <i class="logo-icon icon-ti-logo fa-4x"></i>
+                <?php } else { ?>
+                    <i class="fa <?= $item['icon'] ?> fa-2x"></i>
                 <?php } ?>
             </div>
-            <div class="col col-sm-2 align-middle">
+            <div class="col-sm-2 pl-0 text-truncate">
+                <b><?= $item['name'] ?></b>
+                <p><?= $item['version'] ?></p>
+            </div>
+            <div class="description col col-sm-7">
+                <?php if (isset($item['tags']['data'][0]) AND $tag = $item['tags']['data'][0]) { ?>
+                    <?= $tag['description'] ?>
+                <?php } ?>
+            </div>
+            <div class="col col-sm-2 text-right">
                 <div class="btn-group btn-group-toggle" data-toggle="buttons">
                     <?php if ($ignored) { ?>
                         <button

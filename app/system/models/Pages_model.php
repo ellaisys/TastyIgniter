@@ -1,6 +1,6 @@
 <?php
 
-namespace System\models;
+namespace System\Models;
 
 use Igniter\Flame\Database\Traits\HasPermalink;
 use Model;
@@ -33,14 +33,18 @@ class Pages_model extends Model
      */
     public $timestamps = TRUE;
 
+    protected $guarded = [];
+
+    public $casts = [
+        'language_id' => 'integer',
+        'navigation' => 'serialize',
+        'status' => 'boolean',
+    ];
+
     public $relation = [
         'belongsTo' => [
             'language' => 'System\Models\Languages_model',
         ],
-    ];
-
-    public $casts = [
-        'navigation' => 'serialize',
     ];
 
     protected $permalinkable = [

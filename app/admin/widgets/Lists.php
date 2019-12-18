@@ -6,7 +6,6 @@ use Admin\Classes\BaseWidget;
 use Admin\Classes\ListColumn;
 use Carbon\Carbon;
 use DB;
-use Event;
 use Exception;
 use Html;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -65,6 +64,12 @@ class Lists extends BaseWidget
      * @var mixed A default sort column to look for.
      */
     public $defaultSort;
+
+    /**
+     * @var string The location context of this widget, columns that do not belong
+     * to this context will not be shown.
+     */
+    protected $locationContext;
 
     protected $defaultAlias = 'list';
 
@@ -145,6 +150,7 @@ class Lists extends BaseWidget
             'showCheckboxes',
             'showSorting',
             'defaultSort',
+            'locationContext',
         ]);
 
         $this->pageLimit = $this->getSession('page_limit',
@@ -241,8 +247,7 @@ class Lists extends BaseWidget
         $withs = [];
 
         // Extensibility
-        Event::fire('admin.list.extendQueryBefore', [$this, $query]);
-        $this->fireEvent('list.extendQueryBefore', [$query]);
+        $this->fireSystemEvent('admin.list.extendQueryBefore', [$query]);
 
         // Prepare searchable column names
         $primarySearchable = [];
@@ -261,7 +266,7 @@ class Lists extends BaseWidget
                 } // Primary
                 else {
                     $columnName = isset($column->sqlSelect)
-                        ? DB::raw($this->parseTableName($column->sqlSelect, $table))
+                        ? DB::raw($this->parseTableName($column->sqlSelect, $primaryTable))
                         : DB::getTablePrefix().$primaryTable.'.'.$column->columnName;
 
                     $primarySearchable[] = $columnName;
@@ -333,7 +338,7 @@ class Lists extends BaseWidget
                     ? Db::raw("group_concat(".$sqlSelect." separator ', ')")
                     : Db::raw($sqlSelect);
 
-                $joinSql = $countQuery->select($joinSql)->toSql();
+                $joinSql = $countQuery->select($joinSql)->toRawSql();
 
                 $selects[] = Db::raw("(".$joinSql.") as ".$alias);
             } // Primary column
@@ -361,10 +366,7 @@ class Lists extends BaseWidget
         $query->select($selects);
 
         // Extensibility
-        if (
-            ($event = $this->fireEvent('list.extendQuery', [$query], TRUE)) OR
-            ($event = Event::fire('admin.list.extendQuery', [$this, $query], TRUE))
-        ) {
+        if ($event = $this->fireSystemEvent('admin.list.extendQuery', [$query], TRUE)) {
             return $event;
         }
 
@@ -462,8 +464,7 @@ class Lists extends BaseWidget
         $this->addColumns($this->columns);
 
         // Extensibility
-        Event::fire('admin.list.extendColumns', [$this]);
-        $this->fireEvent('list.extendColumns');
+        $this->fireSystemEvent('admin.list.extendColumns');
 
         // Use a supplied column order
         if ($columnOrder = $this->getSession('order', null)) {
@@ -500,6 +501,12 @@ class Lists extends BaseWidget
     public function addColumns(array $columns)
     {
         foreach ($columns as $columnName => $config) {
+            // Check that the filter scope matches the active location context
+            if (array_key_exists('locationContext', $config)) {
+                $locationContext = (array)$config['locationContext'];
+                if (!in_array($this->locationContext, $locationContext)) continue;
+            }
+
             $this->allColumns[$columnName] = $this->makeListColumn($columnName, $config);
         }
     }
@@ -559,7 +566,7 @@ class Lists extends BaseWidget
             $this->pageLimit,
             $this->currentPageNumber,
             [
-                'path'     => Paginator::resolveCurrentPath(),
+                'path' => Paginator::resolveCurrentPath(),
                 'pageName' => 'page',
             ]
         );
@@ -597,11 +604,7 @@ class Lists extends BaseWidget
         $value = lang($column->label);
 
         // Extensibility
-        if ($response = Event::fire('admin.list.overrideHeaderValue', [$this, $column, $value], TRUE)) {
-            $value = $response;
-        }
-
-        if ($response = $this->fireEvent('list.overrideHeaderValue', [$column, $value], TRUE)) {
+        if ($response = $this->fireSystemEvent('admin.list.overrideHeaderValue', [$column, $value], TRUE)) {
             $value = $response;
         }
 
@@ -632,11 +635,7 @@ class Lists extends BaseWidget
             $value = $column->defaults;
 
         // Extensibility
-        if (($response = Event::fire('admin.list.overrideColumnValue', [$this, $record, $column, $value], TRUE)) !== null) {
-            $value = $response;
-        }
-
-        if (($response = $this->fireEvent('list.overrideColumnValue', [$record, $column, $value], TRUE)) !== null) {
+        if ($response = $this->fireSystemEvent('admin.list.overrideColumnValue', [$record, $column, $value], TRUE)) {
             $value = $response;
         }
 
@@ -652,11 +651,7 @@ class Lists extends BaseWidget
         $result = $column->attributes;
 
         // Extensibility
-        if (($response = Event::fire('admin.list.overrideColumnValue', [$this, $record, $column, $result], TRUE)) !== null) {
-            $result = $response;
-        }
-
-        if (($response = $this->fireEvent('list.overrideColumnValue', [$record, $column, $result], TRUE)) !== null) {
+        if ($response = $this->fireSystemEvent('admin.list.overrideColumnValue', [$record, $column, $result], TRUE)) {
             $result = $response;
         }
 
@@ -670,7 +665,7 @@ class Lists extends BaseWidget
 
         foreach ($result as $key => $value) {
             if ($key == 'href' AND !preg_match('#^(\w+:)?//#i', $value)) {
-                $result[$key] = admin_url($value);
+                $result[$key] = $this->controller->pageUrl($value);
             }
             else if (is_string($value)) {
                 $result[$key] = lang($value);
@@ -735,10 +730,10 @@ class Lists extends BaseWidget
         $response = $this->makePartial($column->path ?: $column->columnName, [
             'listColumn' => $column,
             'listRecord' => $record,
-            'listValue'  => $value,
-            'column'     => $column,
-            'record'     => $record,
-            'value'      => $value,
+            'listValue' => $value,
+            'column' => $column,
+            'record' => $record,
+            'value' => $value,
         ]);
 
         return $response;
@@ -757,8 +752,8 @@ class Lists extends BaseWidget
      */
     protected function evalSwitchTypeValue($record, $column, $value)
     {
-        $onText = lang($column->onText ?? 'admin::default.text_enabled');
-        $offText = lang($column->offText ?? 'admin::default.text_disabled');
+        $onText = lang($column->config['onText'] ?? 'admin::lang.text_enabled');
+        $offText = lang($column->config['offText'] ?? 'admin::lang.text_disabled');
 
         return $value ? $onText : $offText;
     }
@@ -889,7 +884,7 @@ class Lists extends BaseWidget
     public function setSearchOptions($options = [])
     {
         extract(array_merge([
-            'mode'  => null,
+            'mode' => null,
             'scope' => null,
         ], $options));
 
@@ -1073,6 +1068,16 @@ class Lists extends BaseWidget
         $this->pageLimit = $pageLimit ? $pageLimit : $this->pageLimit;
         $this->putSession('order', post('column_order'));
         $this->putSession('page_limit', $this->pageLimit);
+
+        return $this->onRefresh();
+    }
+
+    /**
+     * Event handler to reset the list set up.
+     */
+    public function onResetSetup()
+    {
+        $this->resetSession();
 
         return $this->onRefresh();
     }

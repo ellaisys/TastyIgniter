@@ -2,27 +2,27 @@
     data-control="components"
     data-alias="<?= $this->alias ?>"
     data-add-handler="<?= $onAddEventHandler ?>"
-    data-sortable-container=".components"
+    data-sortable-container=".components-container"
 >
 
     <div class="components">
-        <div class="d-flex align-content-stretch">
-            <div class="components-item mr-2 components-picker">
+        <div class="components-container">
+            <div class="components-item components-picker">
                 <div
                     class="component btn btn-light"
                     data-control="toggle-components"
                     data-toggle="modal"
                     data-target="#<?= $this->getId('components-modal') ?>"
                 >
-                    <h5><i class="fa fa-plus"></i></h5>
-                    <h6 class="text-muted"><?= lang($this->prompt) ?></h6>
+                    <b><i class="fa fa-plus"></i></b>
+                    <p class="text-muted mb-0"><?= lang($this->prompt) ?></p>
                 </div>
             </div>
             <?php if (count($components)) { ?>
                 <?php foreach ($components as $code => $component) { ?>
                     <?= $this->makePartial('component', [
                         'component' => $component,
-                        'field'     => $field,
+                        'field' => $field,
                     ]) ?>
                 <?php } ?>
             <?php } ?>

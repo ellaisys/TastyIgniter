@@ -23,9 +23,19 @@ class Users_model extends AuthUserModel
 
     protected $primaryKey = 'user_id';
 
-    protected $dates = [
-        'reset_time',
-        'date_activated',
+    protected $fillable = ['username', 'super_user'];
+
+    protected $appends = ['staff_name'];
+
+    protected $hidden = ['password'];
+
+    public $casts = [
+        'staff_id' => 'integer',
+        'super_user' => 'boolean',
+        'is_activated' => 'boolean',
+        'reset_time' => 'datetime',
+        'date_activated' => 'datetime',
+        'last_login' => 'datetime',
     ];
 
     public $relation = [
@@ -35,12 +45,6 @@ class Users_model extends AuthUserModel
     ];
 
     protected $with = ['staff'];
-
-    protected $fillable = ['username', 'super_user'];
-
-    protected $appends = ['staff_name'];
-
-    protected $hidden = ['password'];
 
     protected $purgeable = ['password_confirm'];
 
@@ -168,7 +172,7 @@ class Users_model extends AuthUserModel
 
         // Specify the requested action if not present, based on the $_SERVER REQUEST_METHOD
         $requestMethod = Request::server('REQUEST_METHOD');
-        if (in_array(Controller::$action, ['create', 'edit', 'manage', 'settings']))
+        if ($requestMethod !== 'GET' AND in_array(Controller::$action, ['create', 'edit', 'manage', 'settings']))
             $requestMethod = Controller::$action;
 
         if (is_string(post('_method')))
@@ -178,21 +182,19 @@ class Users_model extends AuthUserModel
             case 'get':
                 $result = ['access'];
                 break;
-            case 'post':
-                $result = ['access', 'add'];
-                break;
             case 'delete':
                 $result = ['delete'];
                 break;
+            case 'put':
+            case 'create':
+                $result = ['add'];
+                break;
+            case 'post':
+            case 'patch':
             case 'edit':
             case 'manage':
             case 'settings':
-            case 'patch':
                 $result = ['access', 'manage'];
-                break;
-            case 'create':
-            case 'put':
-                $result = ['add'];
                 break;
         }
 
@@ -225,9 +227,6 @@ class Users_model extends AuthUserModel
 
     public function hasStrictLocationAccess()
     {
-        if ($this->isSuperUser())
-            return FALSE;
-
         return (bool)$this->staff->group->location_access;
     }
 

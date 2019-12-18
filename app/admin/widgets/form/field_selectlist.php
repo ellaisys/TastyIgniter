@@ -22,13 +22,14 @@ $enableFilter = (count($fieldOptions) > 20);
         <?php foreach ($fieldOptions as $value => $option) { ?>
             <?php
             if (!is_array($option)) $option = [$option];
+            if ($field->disabled AND !in_array($value, $checkedValues)) continue;
             ?>
             <option
                 <?= in_array($value, $checkedValues) ? 'selected="selected"' : '' ?>
                 value="<?= $value ?>">
-                <?= e((sscanf($option[0], 'lang:%s', $line) === 1) ? lang($line) : $option[0]) ?>
+                <?= e(is_lang_key($option[0]) ? lang($option[0]) : $option[0]) ?>
                 <?php if (isset($option[1])) { ?>
-                    <span><?= e((sscanf($option[1], 'lang:%s', $line) === 1) ? lang($line) : $option[1]) ?></span>
+                    <span><?= e(is_lang_key($option[1]) ? lang($option[1]) : $option[1]) ?></span>
                 <?php } ?>
             </option>
         <?php } ?>

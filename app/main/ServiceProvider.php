@@ -2,11 +2,11 @@
 
 namespace Main;
 
+use Event;
 use Igniter\Flame\Foundation\Providers\AppServiceProvider;
-use Igniter\Flame\Pagic\Cache\FileSystem as FileCache;
-use Igniter\Flame\Pagic\Parsers\FileParser;
 use Illuminate\Support\Facades\View;
 use Main\Classes\ThemeManager;
+use Main\Template\Page;
 use Setting;
 use System\Libraries\Assets;
 
@@ -23,6 +23,12 @@ class ServiceProvider extends AppServiceProvider
 
         View::share('site_name', Setting::get('site_name'));
         View::share('site_logo', Setting::get('site_logo'));
+
+        $this->bootMenuItemEvents();
+
+        if (!$this->app->runningInAdmin()) {
+            $this->resolveFlashSessionKey();
+        }
     }
 
     /**
@@ -37,8 +43,7 @@ class ServiceProvider extends AppServiceProvider
         if (!$this->app->runningInAdmin()) {
             $this->registerSingletons();
             $this->registerAssets();
-
-            FileParser::setCache(new FileCache(storage_path().'/system/cache'));
+            $this->registerCombinerEvent();
         }
     }
 
@@ -52,7 +57,47 @@ class ServiceProvider extends AppServiceProvider
             $manager->registerSourcePath($this->app->themesPath());
 
             $theme = ThemeManager::instance()->getActiveTheme();
-            $manager->loadAssetsFromFile($theme->publicPath.'/_meta/assets.json', 'theme');
+            $manager->addFromManifest($theme->publicPath.'/_meta/assets.json');
+        });
+    }
+
+    protected function registerCombinerEvent()
+    {
+        if ($this->app->runningInConsole()) {
+            return;
+        }
+
+        Event::listen('assets.combiner.beforePrepare', function (Assets $combiner, $assets) {
+            ThemeManager::applyAssetVariablesOnCombinerFilters(
+                array_flatten($combiner->getFilters())
+            );
+        });
+    }
+
+    protected function resolveFlashSessionKey()
+    {
+        $this->app->resolving('flash', function (\Igniter\Flame\Flash\FlashBag $flash) {
+            $flash->setSessionKey('flash_data_main');
+        });
+    }
+
+    /**
+     * Registers events for menu items.
+     */
+    protected function bootMenuItemEvents()
+    {
+        Event::listen('pages.menuitem.listTypes', function () {
+            return [
+                'theme-page' => 'main::lang.pages.text_theme_page',
+            ];
+        });
+
+        Event::listen('pages.menuitem.getTypeInfo', function ($type) {
+            return Page::getMenuTypeInfo($type);
+        });
+
+        Event::listen('pages.menuitem.resolveItem', function ($type, $item, $url, $theme) {
+            return Page::resolveMenuItem($item, $url, $theme);
         });
     }
 }

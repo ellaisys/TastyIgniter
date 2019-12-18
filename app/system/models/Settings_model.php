@@ -4,9 +4,12 @@ use Carbon\Carbon;
 use Config;
 use DateTime;
 use DateTimeZone;
+use Exception;
 use Model;
+use Session;
 use Setting;
 use System\Classes\ExtensionManager;
+use System\Classes\UpdateManager;
 use System\Traits\ConfigMaker;
 
 /**
@@ -55,6 +58,8 @@ class Settings_model extends Model
         $now = Carbon::now();
 
         return [
+            'd M Y' => $now->format('d M Y'),
+            'M d Y' => $now->format('M d Y'),
             'd m Y' => $now->format('d m Y'),
             'm d Y' => $now->format('m d Y'),
             'Y m d' => $now->format('Y m d'),
@@ -74,19 +79,38 @@ class Settings_model extends Model
         return [
             'h:i A' => $now->format('h:i A'),
             'h:i a' => $now->format('h:i a'),
-            'H:i'   => $now->format('H:i'),
+            'H:i' => $now->format('H:i'),
         ];
     }
 
     public static function getPageLimitOptions()
     {
         return [
-            '10'  => '10',
-            '20'  => '20',
-            '50'  => '50',
-            '75'  => '75',
+            '10' => '10',
+            '20' => '20',
+            '50' => '50',
+            '75' => '75',
             '100' => '100',
         ];
+    }
+
+    public static function onboardingIsComplete()
+    {
+        if (!Session::has('settings.errors'))
+            return FALSE;
+
+        return count(array_filter((array)Session::get('settings.errors'))) === 0;
+    }
+
+    public static function updatesCount()
+    {
+        try {
+            $updates = UpdateManager::instance()->requestUpdateList();
+
+            return count(array_get($updates, 'items', []));
+        }
+        catch (Exception $ex) {
+        }
     }
 
     public function getValueAttribute()
@@ -155,7 +179,7 @@ class Settings_model extends Model
         $settingsConfig = array_except($fieldConfig, 'toolbar');
         $this->registerSettingItems('core', $settingsConfig);
 
-        // Load plugin items
+        // Load extension items
         $extensions = ExtensionManager::instance()->getExtensions();
 
         foreach ($extensions as $code => $extension) {
@@ -191,21 +215,21 @@ class Settings_model extends Model
         }
 
         $defaultDefinitions = [
-            'code'        => null,
-            'label'       => null,
+            'code' => null,
+            'label' => null,
             'description' => null,
-            'icon'        => null,
-            'url'         => null,
-            'priority'    => null,
+            'icon' => null,
+            'url' => null,
+            'priority' => null,
             'permissions' => [],
-            'context'     => 'settings',
-            'model'       => null,
-            'form'        => null,
+            'context' => 'settings',
+            'model' => null,
+            'form' => null,
         ];
 
         foreach ($definitions as $code => $definition) {
             $item = array_merge($defaultDefinitions, array_merge($definition, [
-                'code'  => $code,
+                'code' => $code,
                 'owner' => $owner,
             ]));
 
@@ -248,7 +272,7 @@ class Settings_model extends Model
             $current_timezone = new DateTimeZone($timezone_identifier);
 
             $temp_timezones[] = [
-                'offset'     => (int)$current_timezone->getOffset($utc_time),
+                'offset' => (int)$current_timezone->getOffset($utc_time),
                 'identifier' => $timezone_identifier,
             ];
         }

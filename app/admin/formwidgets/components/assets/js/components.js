@@ -25,11 +25,12 @@
         $sortableContainer.sortable({
             group: 'components',
             containerSelector: this.options.sortableContainer,
-            containerPath: '> div',
-            itemPath: '> div',
             itemSelector: '.components-item:not(:first-child)',
             placeholder: '<div class="placeholder sortable-placeholder"></div>',
             handle: '.handle',
+            nested: false,
+            vertical: false,
+            exclude: '.components-picker',
         })
     }
 
@@ -47,13 +48,15 @@
             self.$modalRootElement.modal('hide')
         }).done(function (json) {
             self.$el.find('[data-control="toggle-components"]').parent().after(json)
-            self.$el.find('select.form-control').select2()
-            self.$el.find('[data-control="selectlist"]').selectList()
         })
     }
 
     Components.prototype.onRemoveClicked = function (event) {
-        var $element = $(event.currentTarget)
+        var $element = $(event.currentTarget),
+            prompt = $element.data('prompt')
+
+        if (prompt.length && !confirm(prompt))
+            return false;
 
         $element.closest('.components-item').remove()
     }
@@ -95,7 +98,7 @@
 
     // Components DATA-API
     // ===============
-    $(document).ready(function () {
+    $(document).render(function () {
         $('[data-control="components"]').components()
     })
 }(window.jQuery);

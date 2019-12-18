@@ -8,6 +8,8 @@ use Model;
  */
 class Currencies_model extends Model
 {
+    const CREATED_AT = null;
+
     const UPDATED_AT = 'date_modified';
 
     /**
@@ -25,6 +27,13 @@ class Currencies_model extends Model
      */
     public $timestamps = TRUE;
 
+    public $casts = [
+        'country_id' => 'integer',
+        'currency_rate' => 'float',
+        'symbol_position' => 'boolean',
+        'currency_status' => 'boolean',
+    ];
+
     public $relation = [
         'belongsTo' => [
             'country' => 'System\Models\Countries_model',
@@ -37,30 +46,7 @@ class Currencies_model extends Model
                      ->selectRaw("CONCAT_WS(' - ', country_name, currency_code, currency_symbol) as name")
                      ->leftJoin('countries', 'currencies.country_id', '=', 'countries.country_id')
                      ->orderBy('priority')
+                     ->where('currency_status', 1)
                      ->dropdown('name', 'currency_code');
-    }
-
-    //
-    // Helpers
-    //
-
-    /**
-     * Update the accepted currencies
-     *
-     * @param array $accepted_currencies an indexed array of currency ids
-     *
-     * @return bool TRUE on success, FALSE on failure
-     */
-    public static function updateAcceptedCurrencies($accepted_currencies)
-    {
-        $update = self::where('currency_id', '!=', setting('default_currency_code'))
-                      ->update(['currency_status' => '0']);
-
-        if (is_array($accepted_currencies)) {
-            $update = self::whereIn('currency_id', $accepted_currencies)
-                          ->update(['currency_status' => '1']);
-        }
-
-        return $update;
     }
 }

@@ -1,6 +1,6 @@
 <?php namespace System\Controllers;
 
-use Admin\Models\Locations_model;
+use Admin\Traits\FormExtendable;
 use Admin\Traits\WidgetMaker;
 use AdminAuth;
 use AdminMenu;
@@ -8,13 +8,14 @@ use Exception;
 use File;
 use Illuminate\Mail\Message;
 use Mail;
+use Request;
 use Session;
-use System\Models\Currencies_model;
 use Template;
 
 class Settings extends \Admin\Classes\AdminController
 {
     use WidgetMaker;
+    use FormExtendable;
 
     protected $requiredPermissions = 'Site.Settings';
 
@@ -22,8 +23,14 @@ class Settings extends \Admin\Classes\AdminController
 
     protected $modelConfig;
 
+    /**
+     * @var \Admin\Widgets\Form
+     */
     public $formWidget;
 
+    /**
+     * @var \Admin\Widgets\Toolbar
+     */
     public $toolbarWidget;
 
     public $settingCode;
@@ -43,7 +50,7 @@ class Settings extends \Admin\Classes\AdminController
 
         // For security reasons, delete setup files if still exists.
         if (File::isFile(base_path('setup.php')) OR File::isDirectory(base_path('setup'))) {
-            flash()->danger(lang('system::lang.settings.alert_delete_setup_files'))->now();
+            flash()->danger(lang('system::lang.settings.alert_delete_setup_files'))->important()->now();
         }
 
         $pageTitle = lang('system::lang.settings.text_title');
@@ -71,6 +78,10 @@ class Settings extends \Admin\Classes\AdminController
             $this->validateSettingItems();
             if ($errors = array_get($this->settingItemErrors, $settingCode))
                 Session::flash('errors', $errors);
+
+            if ($settingCode == 'setup')
+                $this->addJs('~/app/admin/formwidgets/repeater/assets/js/jquery-sortable.js', 'jquery-sortable-js');
+            $this->addJs('~/app/admin/assets/js/ratings.js', 'ratings-js');
         }
         catch (Exception $ex) {
             $this->handleError($ex);
@@ -87,20 +98,14 @@ class Settings extends \Admin\Classes\AdminController
         $this->initWidgets($model, $definition);
 
         if ($this->formValidate($this->formWidget) === FALSE)
-            return;
+            return Request::ajax() ? ['#notification' => $this->makePartial('flash')] : FALSE;
 
-        if (is_numeric($locationId = post('default_location_id'))) {
-            Locations_model::updateDefault(['location_id' => $locationId]);
-        }
-
-        if (is_array($acceptedCurrencies = post('accepted_currencies'))) {
-            Currencies_model::updateAcceptedCurrencies($acceptedCurrencies);
-        }
+        $this->formBeforeSave($model);
 
         setting()->set($this->formWidget->getSaveData());
         setting()->save();
 
-        $this->validateSettingItems(TRUE);
+        $this->formAfterSave($model);
 
         flash()->success(sprintf(lang('admin::lang.alert_success'), lang($definition['label']).' settings updated '));
 
@@ -121,7 +126,7 @@ class Settings extends \Admin\Classes\AdminController
         $this->initWidgets($model, $definition);
 
         if ($this->formValidate($this->formWidget) === FALSE)
-            return;
+            return Request::ajax() ? ['#notification' => $this->makePartial('flash')] : FALSE;
 
         setting()->set($this->formWidget->getSaveData());
 
@@ -161,7 +166,7 @@ class Settings extends \Admin\Classes\AdminController
         // Prep the optional toolbar widget
         if (isset($this->modelConfig['toolbar']) AND isset($this->widgets['toolbar'])) {
             $this->toolbarWidget = $this->widgets['toolbar'];
-            $this->toolbarWidget->addButtons(array_get($this->modelConfig['toolbar'], 'buttons', []));
+            $this->toolbarWidget->reInitialize($this->modelConfig['toolbar']);
         }
     }
 
@@ -187,6 +192,11 @@ class Settings extends \Admin\Classes\AdminController
         return new $this->modelClass();
     }
 
+    protected function formAfterSave($model)
+    {
+        $this->validateSettingItems(TRUE);
+    }
+
     protected function formValidate($form)
     {
         if (!isset($form->config['rules']))
@@ -197,7 +207,7 @@ class Settings extends \Admin\Classes\AdminController
 
     protected function validateSettingItems($skipSession = FALSE)
     {
-        $settingItemErrors = Session::get('settings.errors');
+        $settingItemErrors = Session::get('settings.errors', []);
 
         if ($skipSession OR !$settingItemErrors) {
             $model = $this->createModel();

@@ -1,7 +1,8 @@
 .navbar-top {
   background-color: $gray-200;
   padding: 0;
-  border-bottom: 1px solid $gray-400;
+  border-bottom: 0px solid $gray-400;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .075);
 
   &.navbar-expand {
     .navbar {
@@ -10,9 +11,10 @@
 
     .navbar-nav {
       .nav-link {
-        line-height: 60px;
+        line-height: $page-top-line-height;
         color: $body-color;
         padding: $mainmenu-padding-x $mainmenu-padding-y;
+        position: relative;
       }
     }
   }
@@ -32,6 +34,15 @@
       vertical-align: middle;
     }
 
+    .nav-link > .badge {
+      padding: 0.2rem;
+      font-size: 10px;
+      border-radius: 3px;
+      position: absolute;
+      top: 15px;
+      right: 6px;
+    }
+
     > li.nav-item.show > a .fa {
       color: $primary;
     }
@@ -41,7 +52,7 @@
       border-bottom: 8px solid $gray-200;
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
-      bottom: -13px;
+      bottom: -12px;
       display: inline-block;
       left: 50%;
       margin-left: -8px;
@@ -78,14 +89,14 @@
     padding: 0;
     margin-top: 12px;
     line-height: $line-height-base;
-    width: $mainmenu-dropdown-width;
+    min-width: $mainmenu-dropdown-width;
     box-shadow: $box-shadow;
+    border: 0 none;
 
     .dropdown-header {
       font-size: $font-size-base;
       color: $gray-600;
-      text-align: center;
-      padding: 10px 0 8px;
+      padding: 10px 20px 8px;
       border-bottom: $border-width solid $border-color;
     }
 
@@ -110,18 +121,26 @@
       overflow-x: hidden;
       padding: 0;
 
+      &.menu-lg {
+        min-width: $mainmenu-dropdown-width + 130px;
+      }
+
       .menu-item {
         border-bottom: $border-width solid $dropdown-border-color;
       }
 
       .menu-item:hover {
-        background-color: $dropdown-divider-bg;
+        background-color: $dropdown-link-hover-bg;
       }
 
       .menu-link {
         padding: 10px 20px;
         display: block;
         text-decoration: none;
+        color: $text-muted;
+      }
+
+      .menu-item.active .menu-link {
         color: $body-color;
       }
 
@@ -222,6 +241,7 @@
     }
   }
 }
+
 .navbar-brand {
   display: block;
   padding: 0;
@@ -235,6 +255,7 @@
     color: $logo-font-color;
   }
 }
+
 .page-title {
   margin: 0px;
   padding-left: 15px;
@@ -244,7 +265,12 @@
   small {
     color: $gray-600;
   }
+
+  span {
+    vertical-align: text-top;
+  }
 }
+
 @include media-breakpoint-down(sm) {
   .page-title {
     display: none;

@@ -5,7 +5,6 @@ namespace Admin\Widgets;
 use Admin\Classes\BaseWidget;
 use Admin\Classes\FilterScope;
 use DB;
-use Event;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
@@ -37,6 +36,12 @@ class Filter extends BaseWidget
      */
     public $context;
 
+    /**
+     * @var string The location context of this filter, scopes that do not belong
+     * to this context will not be shown.
+     */
+    public $locationContext;
+
     protected $defaultAlias = 'filter';
 
     /**
@@ -65,6 +70,7 @@ class Filter extends BaseWidget
             'search',
             'scopes',
             'context',
+            'locationContext',
         ]);
 
         if (isset($this->search)) {
@@ -189,7 +195,7 @@ class Filter extends BaseWidget
 
         return [
             'available' => $this->getAvailableOptions($scope),
-            'active'    => $activeKey,
+            'active' => $activeKey,
         ];
     }
 
@@ -236,8 +242,7 @@ class Filter extends BaseWidget
         $query = $model->newQuery();
 
         // Extensibility
-        Event::fire('admin.filter.extendQuery', [$this, $query, $scope]);
-        $this->fireEvent('filter.extendQuery', [$query, $scope]);
+        $this->fireSystemEvent('admin.filter.extendQuery', [$query, $scope]);
 
         return $query->get();
     }
@@ -281,11 +286,15 @@ class Filter extends BaseWidget
         if ($this->scopesDefined)
             return;
 
+        $this->fireSystemEvent('admin.filter.extendScopesBefore');
+
         if (!isset($this->scopes) OR !is_array($this->scopes)) {
             $this->scopes = [];
         }
 
         $this->addScopes($this->scopes);
+
+        $this->fireSystemEvent('admin.filter.extendScopes', [$this->scopes]);
 
         $this->scopesDefined = TRUE;
     }
@@ -298,13 +307,20 @@ class Filter extends BaseWidget
     public function addScopes(array $scopes)
     {
         foreach ($scopes as $name => $config) {
-
             $scopeObj = $this->makeFilterScope($name, $config);
 
             // Check that the filter scope matches the active context
             if ($scopeObj->context !== null) {
                 $context = (array)$scopeObj->context;
                 if (!in_array($this->getContext(), $context)) {
+                    continue;
+                }
+            }
+
+            // Check that the filter scope matches the active location context
+            if ($scopeObj->locationContext !== null) {
+                $locationContext = (array)$scopeObj->locationContext;
+                if (!in_array($this->getLocationContext(), $locationContext)) {
                     continue;
                 }
             }
@@ -395,9 +411,9 @@ class Filter extends BaseWidget
                 if ($scopeConditions = $scope->conditions) {
                     $query->whereRaw(strtr($scopeConditions, [
                         ':filtered' => mdate('%Y-%m-%d', strtotime($scope->value)),
-                        ':year'     => mdate('%Y', strtotime($scope->value)),
-                        ':month'    => mdate('%m', strtotime($scope->value)),
-                        ':day'      => mdate('%d', strtotime($scope->value)),
+                        ':year' => mdate('%Y', strtotime($scope->value)),
+                        ':month' => mdate('%m', strtotime($scope->value)),
+                        ':day' => mdate('%d', strtotime($scope->value)),
                     ]));
                 } // Scope
                 elseif ($scopeMethod = $scope->scope) {
@@ -536,6 +552,15 @@ class Filter extends BaseWidget
     public function getContext()
     {
         return $this->context;
+    }
+
+    /**
+     * Returns the active location context for displaying the filter.
+     * @return string
+     */
+    public function getLocationContext()
+    {
+        return $this->locationContext;
     }
 
     public function isActiveState()

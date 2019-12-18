@@ -7,7 +7,6 @@ use Admin\Classes\FormField;
 use Admin\Classes\FormTabs;
 use Admin\Classes\Widgets;
 use Admin\Traits\FormModelWidget;
-use Event;
 use Exception;
 use Model;
 
@@ -56,6 +55,12 @@ class Form extends BaseWidget
     public $context;
 
     /**
+     * @var string The location context of this form, fields that do not belong
+     * to this context will not be shown.
+     */
+    public $locationContext;
+
+    /**
      * @var string If the field element names should be contained in an array.
      * Eg: <input name="nameArray[fieldName]" />
      */
@@ -83,8 +88,8 @@ class Form extends BaseWidget
      * @see \Admin\Classes\FormTabs
      */
     protected $allTabs = [
-        'outside'   => null,
-        'primary'   => null,
+        'outside' => null,
+        'primary' => null,
         'secondary' => null,
     ];
 
@@ -118,6 +123,7 @@ class Form extends BaseWidget
             'data',
             'arrayName',
             'context',
+            'locationContext',
         ]);
 
         $this->widgetManager = Widgets::instance();
@@ -251,7 +257,7 @@ class Form extends BaseWidget
         return $this->makePartial(
             'form/field_'.$field->type,
             [
-                'field'     => $field,
+                'field' => $field,
                 'formModel' => $this->model,
             ]
         );
@@ -309,16 +315,14 @@ class Form extends BaseWidget
 
         // Extensibility
         $dataHolder = (object)['data' => $saveData];
-        Event::fire('admin.form.extendFieldsBefore', [$dataHolder]);
-        $this->fireEvent('form.extendFieldsBefore');
+        $this->fireSystemEvent('admin.form.beforeRefresh', [$dataHolder]);
         $saveData = $dataHolder->data;
 
         $this->setFormValues($saveData);
         $this->prepareVars();
 
         // Extensibility
-        Event::fire('admin.form.refreshFields', [$this->allFields]);
-        $this->fireEvent('form.refreshFields');
+        $this->fireSystemEvent('admin.form.refreshFields', [$this->allFields]);
 
         if (($updateFields = post('fields')) && is_array($updateFields)) {
             foreach ($updateFields as $field) {
@@ -356,7 +360,6 @@ class Form extends BaseWidget
     public function addFields(array $fields, $addToArea = null)
     {
         foreach ($fields as $name => $config) {
-
             // Check that the form field matches the active context
             if (array_key_exists('context', $config)) {
                 $context = (array)$config['context'];
@@ -806,6 +809,15 @@ class Form extends BaseWidget
     }
 
     /**
+     * Returns the active location context for displaying the form field.
+     * @return string
+     */
+    public function getLocationContext()
+    {
+        return $this->locationContext;
+    }
+
+    /**
      * Validate the supplied form model.
      * @return mixed
      * @throws \Exception
@@ -835,8 +847,7 @@ class Form extends BaseWidget
         }
 
         // Extensibility
-        Event::fire('admin.form.extendFieldsBefore', [$this]);
-        $this->fireEvent('form.extendFieldsBefore');
+        $this->fireSystemEvent('admin.form.extendFieldsBefore');
 
         // Outside fields
         if (!isset($this->fields) OR !is_array($this->fields)) {
@@ -855,8 +866,10 @@ class Form extends BaseWidget
         $this->addFields($this->tabs['fields'], FormTabs::SECTION_PRIMARY);
 
         // Extensibility
-        $this->fireEvent('form.extendFields', [$this->allFields]);
-        Event::fire('admin.form.extendFields', [$this, $this->allFields]);
+        $this->fireSystemEvent('admin.form.extendFields', [$this->allFields]);
+
+        // Check that the form field matches the active location context
+        $this->processLocationContext($this->allFields);
 
         // Convert automatic spanned fields
         foreach ($this->allTabs->outside->getFields() as $fields) {
@@ -1093,5 +1106,19 @@ class Form extends BaseWidget
         return $this->arrayName
             ? post($this->arrayName)
             : post();
+    }
+
+    protected function processLocationContext($fields)
+    {
+        foreach ($fields as $field) {
+            if (!array_key_exists('locationContext', $field->config))
+                continue;
+
+            $locationContext = (array)$field->config['locationContext'];
+            if (!$this->getLocationContext() OR in_array($this->getLocationContext(), $locationContext))
+                continue;
+
+            $field->disabled = TRUE;
+        }
     }
 }

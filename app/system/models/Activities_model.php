@@ -1,6 +1,8 @@
 <?php namespace System\Models;
 
 use Igniter\Flame\ActivityLog\Models\Activity;
+use Model;
+use System\Classes\ExtensionManager;
 
 /**
  * Activities Model Class
@@ -8,10 +10,24 @@ use Igniter\Flame\ActivityLog\Models\Activity;
  */
 class Activities_model extends Activity
 {
-    public static function listMenuActivities($menu, $item, $user)
+    public static function unreadCount($menu, $item, Model $user)
+    {
+        return self::query()->user($user)->whereIsUnread()->count();
+    }
+
+    public static function markAllAsRead($menu, $item, Model $user)
+    {
+        $query = self::listRecent(['onlyUser' => $user, 'pageLimit' => null])->whereIsUnread();
+
+        $query->get()->each(function ($model) {
+            $model->markAsRead()->save();
+        });
+    }
+
+    public static function listMenuActivities($menu, $item, Model $user)
     {
         $query = self::listRecent([
-            'exceptUser' => $user,
+            'onlyUser' => $user,
         ]);
 
         return [
@@ -27,16 +43,29 @@ class Activities_model extends Activity
     public function scopeListRecent($query, $options)
     {
         extract(array_merge([
-            'page'       => 1,
-            'pageLimit'  => 20,
-            'sort'       => 'date_added desc',
+            'page' => 1,
+            'pageLimit' => 20,
+            'sort' => 'date_added desc',
+            'onlyUser' => null,
             'exceptUser' => null,
         ], $options));
 
-        if ($exceptUser) {
-            $query->where('causer_type', $exceptUser->getMorphClass())
-                  ->where('causer_id', '<>', $exceptUser->getKey());
+        $query->with(['subject', 'causer']);
+
+        if ($onlyUser) {
+            $query->where('user_id', $onlyUser->getKey())
+                  ->where('user_type', $onlyUser->getMorphClass());
         }
+
+        if ($exceptUser) {
+            $query->where('causer_type', '!=', $exceptUser->getMorphClass());
+            $query->orWhere(function ($q) use ($exceptUser) {
+                $q->where('causer_type', $exceptUser->getMorphClass())
+                  ->where('causer_id', '<>', $exceptUser->getKey());
+            });
+        }
+
+        $query->whereNotNull('subject_id');
 
         if (!is_array($sort)) {
             $sort = [$sort];
@@ -54,6 +83,23 @@ class Activities_model extends Activity
             }
         }
 
-        return $query->take($pageLimit);
+        if ($pageLimit)
+            return $query->take($pageLimit);
+
+        return $query;
+    }
+
+    //
+    // Registration
+    //
+
+    public function loadActivityTypes()
+    {
+        parent::loadActivityTypes();
+
+        $activityTypes = ExtensionManager::instance()->getRegistrationMethodValues('registerActivityTypes');
+        foreach ($activityTypes as $bundles) {
+            $this->registerActivityTypes($bundles);
+        }
     }
 }

@@ -1,7 +1,6 @@
 <?php
 
 use Carbon\Carbon;
-use Igniter\Flame\Location\Facades\Location;
 
 if (!function_exists('controller')) {
     /**
@@ -10,7 +9,7 @@ if (!function_exists('controller')) {
      */
     function controller()
     {
-        return \Main\Classes\MainController::getController();
+        return \Main\Classes\MainController::getController() ?? new \Main\Classes\MainController;
     }
 }
 
@@ -61,8 +60,10 @@ if (!function_exists('restaurant_url')) {
      */
     function restaurant_url($uri = null, array $params = [])
     {
-        if (App::bound('location') AND !isset($params['location']) AND $current = Location::current())
-            $params['location'] = $current->permalink_slug;
+        if (App::bound('location')
+            AND !isset($params['location'])
+            AND $current = App::make('location')->current()
+        ) $params['location'] = $current->permalink_slug;
 
         return page_url($uri, $params);
     }
@@ -82,6 +83,20 @@ if (!function_exists('admin_url')) {
     function admin_url($uri = '', array $params = [])
     {
         return Admin::url($uri, $params);
+    }
+}
+
+if (!function_exists('uploads_url')) {
+    /**
+     * Media Uploads URL
+     * Returns the full URL (including segments) of the assets media uploads directory
+     *
+     * @param null $path
+     * @return string
+     */
+    function uploads_url($path = null)
+    {
+        return \Main\Classes\MediaLibrary::instance()->getMediaUrl($path);
     }
 }
 
@@ -140,6 +155,64 @@ if (!function_exists('mdate')) {
             );
 
         return date($format, $time);
+    }
+}
+
+if (!function_exists('mdate_to_moment_js_format')) {
+    /**
+     * Convert PHP Date formats to Moment JS Date Formats
+     *
+     * @param string $format
+     *
+     * @return int
+     */
+    function convert_php_to_moment_js_format($format)
+    {
+        $replacements = [
+            'd' => 'DD',
+            'D' => 'ddd',
+            'j' => 'D',
+            'l' => 'dddd',
+            'N' => 'E',
+            'S' => 'o',
+            'w' => 'e',
+            'z' => 'DDD',
+            'W' => 'W',
+            'F' => 'MMMM',
+            'm' => 'MM',
+            'M' => 'MMM',
+            'n' => 'M',
+            't' => '',
+            'L' => '',
+            'o' => 'YYYY',
+            'Y' => 'YYYY',
+            'y' => 'YY',
+            'a' => 'a',
+            'A' => 'A',
+            'B' => '',
+            'g' => 'h',
+            'G' => 'H',
+            'h' => 'hh',
+            'H' => 'HH',
+            'i' => 'mm',
+            's' => 'ss',
+            'u' => 'SSS',
+            'e' => 'zz',
+            'I' => '',
+            'O' => '',
+            'P' => '',
+            'T' => '',
+            'Z' => '',
+            'c' => '',
+            'r' => '',
+            'U' => 'X',
+        ];
+
+        foreach ($replacements as $from => $to) {
+            $replacements['\\'.$from] = '['.$from.']';
+        }
+
+        return strtr($format, $replacements);
     }
 }
 
@@ -459,6 +532,33 @@ if (!function_exists('contains_substring')) {
             if ($needle != '' && mb_strpos($haystack, $needle) !== FALSE) {
                 return TRUE;
             }
+        }
+
+        return FALSE;
+    }
+}
+
+if (!function_exists('is_lang_key')) {
+    /**
+     * Determine if a given string matches a language key.
+     * @access    public
+     *
+     * @param  string $line
+     *
+     * @return bool
+     */
+    function is_lang_key($line)
+    {
+        if (!is_string($line)) {
+            return FALSE;
+        }
+
+        if (strpos($line, '::') !== FALSE) {
+            return TRUE;
+        }
+
+        if (starts_with($line, 'lang:')) {
+            return TRUE;
         }
 
         return FALSE;

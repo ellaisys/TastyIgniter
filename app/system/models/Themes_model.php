@@ -15,7 +15,7 @@ class Themes_model extends Model
     /**
      * @var array data cached array
      */
-    protected static $dataCache = [];
+    protected static $instances = [];
 
     /**
      * @var string The database table code
@@ -31,37 +31,48 @@ class Themes_model extends Model
 
     public $casts = [
         'data' => 'serialize',
+        'status' => 'boolean',
+        'is_default' => 'boolean',
     ];
 
     /**
      * @var ThemeManager
      */
-    public $manager = null;
+    public $manager;
 
     /**
      * @var \Main\Classes\Theme
      */
-    public $themeClass = null;
+    public $themeClass;
 
-    public static function getDataFromTheme(Theme $theme)
+    public static function forTheme(Theme $theme)
     {
         $dirName = $theme->getDirName();
-        if (array_key_exists($dirName, self::$dataCache)) {
-            return array_get(self::$dataCache, $dirName);
+        if ($instance = array_get(self::$instances, $dirName)) {
+            return $instance;
         }
 
-        $model = self::whereCode($dirName)->first();
+        $instance = self::firstOrCreate(['code' => $dirName]);
 
-        $data = ($model AND is_array($model->data)) ? $model->data : [];
+        return self::$instances[$dirName] = $instance;
+    }
 
-        return self::$dataCache[$dirName] = $data;
+    public static function onboardingIsComplete()
+    {
+        if (!$code = params('default_themes.main'))
+            return FALSE;
+
+        if (!$model = self::where('code', $code)->first())
+            return FALSE;
+
+        return !is_null($model->data);
     }
 
     //
     // Events
     //
 
-    public function afterFetch()
+    protected function afterFetch()
     {
         $this->applyThemeManager();
     }
@@ -129,9 +140,20 @@ class Themes_model extends Model
 
     public function getFieldValues()
     {
-        $customizeConfig = $this->themeClass->getConfigValue('form', []);
-
         return $this->data ?: [];
+    }
+
+    public function getThemeData()
+    {
+        $data = [];
+        $customizeConfig = $this->themeClass->getConfigValue('form', []);
+        foreach ($customizeConfig as $section => $item) {
+            foreach (array_get($item, 'fields', []) as $name => $field) {
+                $data[$name] = array_get($this->data, $name, array_get($field, 'default'));
+            }
+        }
+
+        return $data;
     }
 
     //
@@ -149,7 +171,7 @@ class Themes_model extends Model
             if (!($themeClass = $themeManager->findTheme($code))) continue;
 
             $themeMeta = (object)$themeClass;
-            $installedThemes[] = $name = isset($themeMeta->name) ? $themeMeta->name : $code;
+            $installedThemes[] = $name = $themeMeta->name ?? $code;
 
             // Only add themes whose meta code match their directory name
             // or theme has no record
@@ -159,10 +181,10 @@ class Themes_model extends Model
             ) continue;
 
             self::create([
-                'name'        => isset($themeMeta->label) ? $themeMeta->label : title_case($code),
-                'code'        => $name,
-                'version'     => isset($themeMeta->version) ? $themeMeta->version : '1.0.0',
-                'description' => isset($themeMeta->description) ? $themeMeta->description : '',
+                'name' => $themeMeta->label ?? title_case($code),
+                'code' => $name,
+                'version' => $themeMeta->version ?? '1.0.0',
+                'description' => $themeMeta->description ?? '',
             ]);
         }
 
@@ -178,7 +200,7 @@ class Themes_model extends Model
      */
     public static function updateInstalledThemes()
     {
-        $installedThemes = self::select('status', 'name')->lists('status', 'code')->all();
+        $installedThemes = self::select('status', 'code')->lists('status', 'code')->all();
 
         if (!is_array($installedThemes))
             $installedThemes = [];

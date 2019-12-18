@@ -35,7 +35,7 @@ return [
 
         'sqlite' => [
             'driver' => 'sqlite',
-            'database' => database_path('database.sqlite'),
+            'database' => 'storage/database.sqlite',
             'prefix' => '',
         ],
 
@@ -62,7 +62,7 @@ return [
             'username' => 'username',
             'password' => 'password',
             'charset' => 'utf8',
-            'prefix' => env('DB_PREFIX', ''),
+            'prefix' => '',
             'schema' => 'public',
             'sslmode' => 'prefer',
         ],
@@ -76,6 +76,8 @@ return [
             'password' => 'password',
             'charset' => 'utf8',
             'prefix' => '',
+            'odbc' => TRUE,
+            'odbc_datasource_name' => 'your-odbc-dsn',
         ],
 
     ],

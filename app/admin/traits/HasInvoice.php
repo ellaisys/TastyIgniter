@@ -17,10 +17,10 @@ trait HasInvoice
             if (!(bool)setting('auto_invoicing'))
                 return;
 
-            if (!method_exists($object, 'generateInvoice'))
+            if (!in_array($statusId, setting('completed_order_status')))
                 return;
 
-            if (!in_array($statusId, setting('completed_order_status')))
+            if (!method_exists($object, 'generateInvoice'))
                 return;
 
             $object->generateInvoice();
@@ -61,13 +61,13 @@ trait HasInvoice
         $now = $this->invoiceGetDate();
 
         return parse_values([
-            'year'   => $now->year,
-            'month'  => $now->month,
-            'day'    => $now->day,
-            'hour'   => $now->hour,
+            'year' => $now->year,
+            'month' => $now->month,
+            'day' => $now->day,
+            'hour' => $now->hour,
             'minute' => $now->minute,
             'second' => $now->second,
-        ], setting('invoice_prefix', 'INV-{year}-00'));
+        ], setting('invoice_prefix') ?: 'INV-{year}-00');
     }
 
     protected function invoiceGetDate()

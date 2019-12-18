@@ -6,12 +6,17 @@ App::before(function () {
      * The Admin app intercepts all URLs
      * prefixed with /admin.
      */
-    Route::group(['middleware' => 'web'], function () {
-        Route::group(['prefix' => config('system.adminUri', '/admin')], function () {
-            Route::any('{slug}', 'System\Classes\Controller@runAdmin')->where('slug', '(.*)?');
-        });
+    Route::group([
+        'middleware' => ['web'],
+        'prefix' => config('system.adminUri', 'admin'),
+    ], function () {
+        // Register Assets Combiner routes
+        Route::any(config('system.assetsCombinerUri', '_assets').'/{asset}', 'System\Classes\Controller@combineAssets');
 
-        // Admin entry point
-        Route::any(config('system.adminUri', '/admin'), 'System\Classes\Controller@runAdmin');
+        // Other pages
+        Route::any('{slug}', 'System\Classes\Controller@runAdmin')->where('slug', '(.*)?');
     });
+
+    // Admin entry point
+    Route::any(config('system.adminUri', 'admin'), 'System\Classes\Controller@runAdmin');
 });

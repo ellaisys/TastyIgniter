@@ -4,7 +4,7 @@ namespace Admin\Widgets;
 
 use Admin\Classes\BaseWidget;
 use Admin\Classes\MenuItem;
-use SystemException;
+use Igniter\Flame\Exception\ApplicationException;
 
 class Menu extends BaseWidget
 {
@@ -133,6 +133,13 @@ class Menu extends BaseWidget
         $item = new MenuItem($name, $label);
         $item->displayAs($itemType, $config);
 
+        // Defer the execution of badge unread count
+        $item->unreadCount(function () use ($item, $config) {
+            $itemBadgeCount = $config['badgeCount'] ?? null;
+
+            return $this->getUnreadCountFromModel($item, $itemBadgeCount);
+        });
+
         // Get menu item options from model
         $optionModelTypes = ['dropdown', 'partial'];
         if (in_array($item->type, $optionModelTypes, FALSE)) {
@@ -169,7 +176,7 @@ class Menu extends BaseWidget
     public function getItem($item)
     {
         if (!isset($this->allItems[$item])) {
-            throw new SystemException('No definition for item '.$item);
+            throw new ApplicationException('No definition for item '.$item);
         }
 
         return $this->allItems[$item];
@@ -194,18 +201,15 @@ class Menu extends BaseWidget
      */
     public function onGetDropdownOptions()
     {
-        if (!$itemName = post('item'))
-            return;
+        if (!strlen($itemName = input('item')))
+            throw new ApplicationException('Invalid item specified');
 
         $this->defineMenuItems();
 
         if (!$item = $this->getItem($itemName))
-            throw new SystemException("No main menu item found matching {$itemName}");
+            throw new ApplicationException("No main menu item found matching {$itemName}");
 
         $itemOptions = $item->options();
-
-//        if (array_key_exists('total', $options))
-//            $this->setBadgeCount($item, $options['total']);
 
         // Return a partial if item has a path defined
         if (strlen($item->partial)) {
@@ -219,6 +223,24 @@ class Menu extends BaseWidget
         return [
             'options' => $itemOptions,
         ];
+    }
+
+    /**
+     * Mark menu items as read.
+     * @return array
+     * @throws \Exception
+     */
+    public function onMarkOptionsAsRead()
+    {
+        if (!strlen($itemName = input('item')))
+            throw new ApplicationException('Invalid item specified');
+
+        $this->defineMenuItems();
+
+        if (!$item = $this->getItem($itemName))
+            throw new ApplicationException("No main menu item found matching {$itemName}");
+
+        $this->resolveMarkAsReadFromModel($item);
     }
 
     /**
@@ -238,5 +260,24 @@ class Menu extends BaseWidget
         }
 
         return $itemOptions;
+    }
+
+    protected function getUnreadCountFromModel($item, $itemBadgeCount)
+    {
+        if (is_array($itemBadgeCount) AND is_callable($itemBadgeCount)) {
+            $user = $this->getLoggedUser();
+            $itemBadgeCount = $itemBadgeCount($this, $item, $user);
+        }
+
+        return $itemBadgeCount;
+    }
+
+    protected function resolveMarkAsReadFromModel($item)
+    {
+        $callback = array_get($item->config, 'markAsRead');
+        if (is_array($callback) AND is_callable($callback)) {
+            $user = $this->getLoggedUser();
+            $callback($this, $item, $user);
+        }
     }
 }

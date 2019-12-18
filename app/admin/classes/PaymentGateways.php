@@ -127,7 +127,7 @@ class PaymentGateways
             $this->gateways[$code] = array_merge($paymentGateway, [
                 'owner' => $owner,
                 'class' => $classPath,
-                'code'  => $code,
+                'code' => $code,
             ]);
         }
     }
@@ -160,7 +160,7 @@ class PaymentGateways
     {
         $params = explode('/', $uri);
 
-        $gateways = self::instance()->listGatewayObjects();
+        $gateways = Payments_model::listPayments();
         foreach ($gateways as $gateway) {
             $points = $gateway->registerEntryPoints();
 
@@ -185,7 +185,7 @@ class PaymentGateways
         $themeManager = ThemeManager::instance();
         $theme = $themeManager->getActiveTheme();
         $partials = $theme->listPartials()->pluck('baseFileName', 'baseFileName')->all();
-        $paymentMethods = Payments_model::all();
+        $paymentMethods = Payments_model::isEnabled()->get();
 
         foreach ($paymentMethods as $paymentMethod) {
             $class = $paymentMethod->getGatewayClass();
@@ -195,6 +195,9 @@ class PaymentGateways
 
             $partialName = 'payregister/'.strtolower(class_basename($class));
             $partialPath = $theme->getPath().'/_partials/'.$partialName.'.php';
+
+            if (!File::isDirectory(dirname($partialPath)))
+                File::makeDirectory(dirname($partialPath), null, TRUE);
 
             if (!array_key_exists($partialName, $partials)) {
                 $filePath = dirname(File::fromClass($class)).'/'.strtolower(class_basename($class)).'/payment_form.php';

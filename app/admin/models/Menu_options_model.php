@@ -24,13 +24,17 @@ class Menu_options_model extends Model
      */
     protected $primaryKey = 'option_id';
 
-    protected $guarded = [];
-
     protected $fillable = ['option_id', 'option_name', 'display_type'];
+
+    public $casts = [
+        'option_id' => 'integer',
+        'priority' => 'integer',
+    ];
 
     public $relation = [
         'hasMany' => [
-            'option_values' => ['Admin\Models\Menu_option_values_model', 'foreignKey' => 'option_id'],
+            'menu_options' => ['Admin\Models\Menu_item_options_model', 'foreignKey' => 'option_id', 'delete' => TRUE],
+            'option_values' => ['Admin\Models\Menu_option_values_model', 'foreignKey' => 'option_id', 'delete' => TRUE],
         ],
     ];
 
@@ -39,7 +43,7 @@ class Menu_options_model extends Model
         ['display_type', 'lang:admin::lang.menu_options.label_display_type', 'required|alpha'],
     ];
 
-    public $purgeable = ['option_values'];
+    protected $purgeable = ['option_values'];
 
     public static function getRecordEditorOptions()
     {
@@ -51,7 +55,7 @@ class Menu_options_model extends Model
     // Events
     //
 
-    public function afterSave()
+    protected function afterSave()
     {
         $this->restorePurgedValues();
 
@@ -95,8 +99,8 @@ class Menu_options_model extends Model
         $idsToKeep = [];
         foreach ($optionValues as $value) {
             $optionValue = $this->option_values()->firstOrNew([
-                'option_value_id' => $value['option_value_id'],
-                'option_id'       => $optionId,
+                'option_value_id' => array_get($value, 'option_value_id'),
+                'option_id' => $optionId,
             ])->fill(array_except($value, ['option_value_id', 'option_id']));
 
             $optionValue->saveOrFail();

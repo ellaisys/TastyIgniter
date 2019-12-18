@@ -10,6 +10,8 @@ use Model;
  */
 class Status_history_model extends Model
 {
+    const UPDATED_AT = null;
+
     const CREATED_AT = 'date_added';
 
     /**
@@ -19,28 +21,36 @@ class Status_history_model extends Model
 
     protected $primaryKey = 'status_history_id';
 
-    public $relation = [
-        'belongsTo' => [
-            'staff'    => 'Admin\Models\Staffs_model',
-            'assignee' => 'Admin\Models\Staffs_model',
-            'status'   => ['Admin\Models\Statuses_model', 'status_id'],
-        ],
-        'morphTo'   => [
-            'object' => [],
-        ],
-    ];
-
-    protected $fillable = ['status_id', 'staff_id', 'assignee_id', 'notify', 'status_for', 'comment'];
+    protected $guarded = [];
 
     protected $appends = ['staff_name', 'assignee_name', 'status_name', 'notified'];
 
     public $timestamps = TRUE;
 
+    public $casts = [
+        'object_id' => 'integer',
+        'staff_id' => 'integer',
+        'assignee_id' => 'integer',
+        'status_id' => 'integer',
+        'notify' => 'boolean',
+    ];
+
+    public $relation = [
+        'belongsTo' => [
+            'staff' => 'Admin\Models\Staffs_model',
+            'assignee' => 'Admin\Models\Staffs_model',
+            'status' => ['Admin\Models\Statuses_model', 'status_id'],
+        ],
+        'morphTo' => [
+            'object' => [],
+        ],
+    ];
+
     public static function alreadyExists($model, $statusId)
     {
         return self::where('object_id', $model->getKey())
                    ->where('object_type', $model->getMorphClass())
-                   ->where('status_id', $statusId)->first();
+                   ->where('status_id', $statusId)->exists();
     }
 
     public function getStaffNameAttribute($value)
@@ -85,9 +95,10 @@ class Status_history_model extends Model
 
         $model->save();
 
-        $object->newQuery()
-               ->where($object->getKeyName(), $object->getKey())
-               ->update(['status_id' => $statusId]);
+        $object::withoutEvents(function () use ($object, $statusId) {
+            $object->status_id = $statusId;
+            $object->save();
+        });
 
         if (array_get($options, 'notify', $status->notify_customer)) {
             $statusFor = $model->status_for == 'reserve' ? 'reservation' : $model->status_for;

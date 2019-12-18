@@ -2,8 +2,8 @@
 
 use Admin\Traits\Locationable;
 use Igniter\Flame\Auth\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Model;
-use System\Models\Settings_model;
 
 /**
  * Reviews Model Class
@@ -13,6 +13,10 @@ use System\Models\Settings_model;
 class Reviews_model extends Model
 {
     use Locationable;
+
+    const CREATED_AT = 'date_added';
+
+    const UPDATED_AT = null;
 
     /**
      * @var string The database table name
@@ -29,29 +33,39 @@ class Reviews_model extends Model
      */
     public $timestamps = TRUE;
 
-    const CREATED_AT = 'date_added';
+    protected $guarded = [];
+
+    public $casts = [
+        'customer_id' => 'integer',
+        'sale_id' => 'integer',
+        'location_id' => 'integer',
+        'quality' => 'integer',
+        'service' => 'integer',
+        'delivery' => 'integer',
+        'review_status' => 'boolean',
+    ];
 
     public $relation = [
         'belongsTo' => [
-            'location' => ['Admin\Models\Locations_model', 'foreignKey' => 'location_id', 'scope' => 'isEnabled'],
+            'location' => ['Admin\Models\Locations_model', 'scope' => 'isEnabled'],
             'customer' => 'Admin\Models\Customers_model',
         ],
-        'morphTo'   => [
-            'reviewable' => [],
+        'morphTo' => [
+            'reviewable' => ['name' => 'sale'],
         ],
     ];
 
     public static $allowedSortingColumns = ['date_added asc', 'date_added desc'];
 
     public static $relatedSaleTypes = [
-        'orders'       => 'Admin\Models\Orders_model',
+        'orders' => 'Admin\Models\Orders_model',
         'reservations' => 'Admin\Models\Reservations_model',
     ];
 
     public static function getSaleTypeOptions()
     {
         return [
-            'orders'       => 'lang:admin::lang.reviews.text_order',
+            'orders' => 'lang:admin::lang.reviews.text_order',
             'reservations' => 'lang:admin::lang.reviews.text_reservation',
         ];
     }
@@ -65,9 +79,7 @@ class Reviews_model extends Model
 
     public function getRatingOptions()
     {
-        $result = Settings_model::where('sort', 'ratings')->first();
-
-        return array_get($result->value, 'ratings', []);
+        return array_get(setting('ratings'), 'ratings', []);
     }
 
     //
@@ -77,11 +89,11 @@ class Reviews_model extends Model
     public function scopeListFrontEnd($query, $options = [])
     {
         extract(array_merge([
-            'page'      => 1,
+            'page' => 1,
             'pageLimit' => 20,
-            'sort'      => null,
-            'location'  => null,
-            'customer'  => null,
+            'sort' => null,
+            'location' => null,
+            'customer' => null,
         ], $options));
 
         if (is_numeric($location)) {
@@ -125,15 +137,22 @@ class Reviews_model extends Model
                      ->where('customer_id', $customerId);
     }
 
+    public function scopeWhereReviewable($query, $causer)
+    {
+        return $query
+            ->where('sale_type', $causer->getMorphClass())
+            ->where('sale_id', $causer->getKey());
+    }
+
     //
     // Helpers
     //
 
     public function getSaleTypeModel($saleType)
     {
-        $model = self::$relatedSaleTypes[$saleType];
-
-        // @todo: throw ex
+        $model = self::$relatedSaleTypes[$saleType] ?? null;
+        if (!$model OR !class_exists($model))
+            throw new ModelNotFoundException;
 
         return new $model();
     }
@@ -146,5 +165,13 @@ class Reviews_model extends Model
     public function getReviewDates()
     {
         return $this->pluckDates('date_added');
+    }
+
+    public static function checkReviewed(Model $object, Model $customer)
+    {
+        $query = self::whereReviewable($object)
+                     ->where('customer_id', $customer->getKey());
+
+        return $query->exists();
     }
 }

@@ -1,6 +1,6 @@
-<div class="panel panel-item item-extension">
-    <div class="media">
-        <a class="media-left media-middle">
+<div class="panel panel-item item-extension h-100 shadow-sm">
+    <div class="d-flex h-75 p-3">
+        <div class="pr-4 align-self-center">
             <?php if (!empty($item['thumb'])) { ?>
                 <img src="<?= $item['thumb'] ?>"
                      class="img-rounded"
@@ -10,19 +10,21 @@
             else { ?>
                 <i class="fa <?= $item['icon'] ?> fa-3x text-muted"></i>
             <?php } ?>
-        </a>
-        <div class="media-body">
-            <h5 class="panel-title"><?= str_limit($item['name'], 22) ?></h5>
-            <?= str_limit($item['description'], 72); ?>
         </div>
+        <div class="flex-grow-1 px-0 ml-auto">
+            <b><?= str_limit($item['name'], 22) ?></b>
+            <p class="mb-0 text-muted"><?= str_limit($item['description'], 128); ?></p>
+        </div>
+    </div>
+    <div class="d-flex p-3">
         <?php if (!empty($item['installed'])) { ?>
-            <button class="media-middle btn btn-outline-default pull-right disabled" title="Added">
+            <button class="btn btn-outline-default btn-block disabled" title="Added">
                 <i class="fa fa-cloud-download"></i>
             </button>
         <?php }
         else { ?>
             <button
-                class="media-middle btn btn-outline-success pull-right btn-install"
+                class="btn btn-outline-success btn-block btn-install"
                 data-title="Add <?= $item['name'] ?>"
                 data-control="add-item"
                 data-item-code="<?= $item['code'] ?>"

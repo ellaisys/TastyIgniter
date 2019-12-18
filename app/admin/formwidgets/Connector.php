@@ -20,11 +20,6 @@ class Connector extends BaseFormWidget
 
     const SORT_PREFIX = '___dragged_';
 
-    /**
-     * @var bool Stops nested repeaters populating from previous sibling.
-     */
-    protected static $onAddItemCalled = FALSE;
-
     //
     // Object properties
     //
@@ -92,6 +87,10 @@ class Connector extends BaseFormWidget
     {
         $this->addJs('../../repeater/assets/js/jquery-sortable.js', 'jquery-sortable-js');
         $this->addJs('../../repeater/assets/js/repeater.js', 'repeater-js');
+
+        $this->addJs('../../recordeditor/assets/js/recordeditor.modal.js', 'recordeditor-modal-js');
+        $this->addJs('../../recordeditor/assets/js/recordeditor.js', 'recordeditor-js');
+
         $this->addJs('js/connector.js', 'connector-js');
     }
 
@@ -111,7 +110,7 @@ class Connector extends BaseFormWidget
     public function prepareVars()
     {
         $this->vars['formField'] = $this->formField;
-        $this->vars['fieldItems'] = $this->processLoadValue();
+        $this->vars['fieldItems'] = $this->processLoadValue() ?? [];
 
         $this->vars['prompt'] = $this->prompt;
         $this->vars['sortable'] = $this->sortable;
@@ -126,10 +125,13 @@ class Connector extends BaseFormWidget
         $recordId = post('recordId');
         $model = $this->getRelationModel()->find($recordId);
 
+        if (!$model)
+            throw new ApplicationException('Record not found');
+
         return $this->makePartial('recordeditor/form', [
             'formRecordId' => $recordId,
-            'formTitle'    => 'Edit '.lang($this->formName),
-            'formWidget'   => $this->makeItemFormWidget($model, 'edit'),
+            'formTitle' => 'Edit '.lang($this->formName),
+            'formWidget' => $this->makeItemFormWidget($model, 'edit'),
         ]);
     }
 
@@ -154,8 +156,8 @@ class Connector extends BaseFormWidget
         $this->prepareVars();
 
         return [
-            '#notification'                     => $this->makePartial('flash'),
-            '#'.$this->getId('items-container') => $this->makePartial('connector/connector'),
+            '#notification' => $this->makePartial('flash'),
+            '#'.$this->getId('items') => $this->makePartial('connector/connector_items'),
         ];
     }
 

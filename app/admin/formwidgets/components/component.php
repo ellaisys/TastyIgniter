@@ -1,5 +1,5 @@
 <div
-    class="components-item mr-2"
+    class="components-item"
 >
     <div class="components-item-action">
         <a
@@ -11,6 +11,7 @@
             data-control="remove-component"
             class="remove btn btn-light btn-sm pull-right"
             role="button"
+            data-prompt="<?= lang('admin::lang.alert_confirm') ?>"
         ><i class="fa fa-times text-danger"></i></a>
     </div>
     <div
@@ -19,10 +20,8 @@
         data-toggle="modal"
         data-target="#<?= $this->getId('components-item-modal-'.$component->alias) ?>"
     >
-        <h5>
-            <?= e(lang($component->name)) ?>
-        </h5>
-        <h6 class="text-muted"><?= $component->description ? e(lang($component->description)) : '' ?></h6>
+        <b><?= e(lang($component->name)) ?></b>
+        <p class="text-muted mb-0"><?= $component->description ? e(lang($component->description)) : '' ?></p>
     </div>
     <input
         type="hidden"
@@ -44,9 +43,11 @@
                     <h4 class="modal-title"><?= e(lang($component->name)) ?></h4>
                 </div>
                 <div class="modal-body">
-                    <?php foreach ($component->widget->getFields() as $componentField) { ?>
-                        <?= $component->widget->renderField($componentField) ?>
-                    <?php } ?>
+                    <div class="components-item-form">
+                        <?php foreach ($component->widget->getFields() as $componentField) { ?>
+                            <?= $component->widget->renderField($componentField) ?>
+                        <?php } ?>
+                    </div>
                 </div>
             </div>
         </div>

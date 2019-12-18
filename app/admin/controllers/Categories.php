@@ -12,32 +12,33 @@ class Categories extends AdminController
 
     public $listConfig = [
         'list' => [
-            'model'        => 'Admin\Models\Categories_model',
-            'title'        => 'lang:admin::lang.categories.text_title',
+            'model' => 'Admin\Models\Categories_model',
+            'title' => 'lang:admin::lang.categories.text_title',
             'emptyMessage' => 'lang:admin::lang.categories.text_empty',
-            'defaultSort'  => ['order_id', 'DESC'],
-            'configFile'   => 'categories_model',
+            'defaultSort' => ['category_id', 'DESC'],
+            'configFile' => 'categories_model',
         ],
     ];
 
     public $formConfig = [
-        'name'       => 'lang:admin::lang.categories.text_form_name',
-        'model'      => 'Admin\Models\Categories_model',
-        'create'     => [
-            'title'         => 'lang:admin::lang.form.create_title',
-            'redirect'      => 'categories/edit/{category_id}',
+        'name' => 'lang:admin::lang.categories.text_form_name',
+        'model' => 'Admin\Models\Categories_model',
+        'request' => 'Admin\Requests\Category',
+        'create' => [
+            'title' => 'lang:admin::lang.form.create_title',
+            'redirect' => 'categories/edit/{category_id}',
             'redirectClose' => 'categories',
         ],
-        'edit'       => [
-            'title'         => 'lang:admin::lang.form.edit_title',
-            'redirect'      => 'categories/edit/{category_id}',
+        'edit' => [
+            'title' => 'lang:admin::lang.form.edit_title',
+            'redirect' => 'categories/edit/{category_id}',
             'redirectClose' => 'categories',
         ],
-        'preview'    => [
-            'title'    => 'lang:admin::lang.form.preview_title',
+        'preview' => [
+            'title' => 'lang:admin::lang.form.preview_title',
             'redirect' => 'categories',
         ],
-        'delete'     => [
+        'delete' => [
             'redirect' => 'categories',
         ],
         'configFile' => 'categories_model',
@@ -50,20 +51,5 @@ class Categories extends AdminController
         parent::__construct();
 
         AdminMenu::setContext('categories', 'kitchen');
-    }
-
-    public function formValidate($model, $form)
-    {
-        $namedRules = [
-            ['name', 'lang:admin::lang.categories.label_name', 'required|min:2|max:128'],
-            ['description', 'lang:admin::lang.categories.label_description', 'min:2'],
-            ['permalink_slug', 'lang:admin::lang.categories.label_permalink_slug', 'alpha_dash|max:255'],
-            ['parent_id', 'lang:admin::lang.categories.label_parent', 'integer'],
-            ['image', 'lang:admin::lang.categories.label_image', 'string'],
-            ['priority', 'lang:admin::lang.categories.label_priority', 'required|integer'],
-            ['status', 'lang:admin::lang.label_status', 'required|integer'],
-        ];
-
-        return $this->validatePasses(post($form->arrayName), $namedRules);
     }
 }

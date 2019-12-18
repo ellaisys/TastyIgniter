@@ -11,6 +11,8 @@ class Coupons_history_model extends Model
 {
     const CREATED_AT = 'date_used';
 
+    const UPDATED_AT = null;
+
     /**
      * @var string The database table name
      */
@@ -21,16 +23,29 @@ class Coupons_history_model extends Model
      */
     protected $primaryKey = 'coupon_history_id';
 
+    protected $guarded = [];
+
+    protected $appends = ['customer_name'];
+
+    public $casts = [
+        'coupon_history_id' => 'integer',
+        'coupon_id' => 'integer',
+        'order_id' => 'integer',
+        'customer_id' => 'integer',
+        'min_total' => 'float',
+        'amount' => 'float',
+        'status' => 'boolean',
+    ];
+
     public $relation = [
         'belongsTo' => [
             'customer' => 'Admin\Models\Customers_model',
-            'order'    => 'Admin\Models\Orders_model',
+            'order' => 'Admin\Models\Orders_model',
+            'coupon' => 'Admin\Models\Coupons_model',
         ],
     ];
 
     public $timestamps = TRUE;
-
-    protected $appends = ['customer_name'];
 
     public function getCustomerNameAttribute($value)
     {

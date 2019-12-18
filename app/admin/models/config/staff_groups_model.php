@@ -1,32 +1,50 @@
 <?php
 $config['list']['toolbar'] = [
     'buttons' => [
-        'create' => ['label' => 'lang:admin::lang.button_new', 'class' => 'btn btn-primary', 'href' => 'staff_groups/create'],
-        'delete' => ['label' => 'lang:admin::lang.button_delete', 'class' => 'btn btn-danger', 'data-request-form' => '#list-form', 'data-request' => 'onDelete', 'data-request-data' => "_method:'DELETE'", 'data-request-confirm' => 'lang:admin::lang.alert_warning_confirm'],
+        'back' => [
+            'label' => 'lang:admin::lang.button_icon_back',
+            'class' => 'btn btn-default',
+            'href' => 'staffs',
+        ],
+        'create' => [
+            'label' => 'lang:admin::lang.button_new',
+            'class' => 'btn btn-primary',
+            'href' => 'staff_groups/create',
+        ],
+        'delete' => [
+            'label' => 'lang:admin::lang.button_delete',
+            'class' => 'btn btn-danger',
+            'data-attach-loading' => '',
+            'data-request' => 'onDelete',
+            'data-request-form' => '#list-form',
+            'data-request-data' => "_method:'DELETE'",
+            'data-request-confirm' => 'lang:admin::lang.alert_warning_confirm',
+        ],
     ],
 ];
 
 $config['list']['columns'] = [
-    'edit'             => [
-        'type'         => 'button',
+    'edit' => [
+        'type' => 'button',
         'iconCssClass' => 'fa fa-pencil',
-        'attributes'   => [
+        'attributes' => [
             'class' => 'btn btn-edit',
-            'href'  => 'staff_groups/edit/{staff_group_id}',
+            'href' => 'staff_groups/edit/{staff_group_id}',
         ],
     ],
     'staff_group_name' => [
-        'label'      => 'lang:admin::lang.staff_groups.column_name',
-        'type'       => 'text',
+        'label' => 'lang:admin::lang.label_name',
+        'type' => 'text',
         'searchable' => TRUE,
     ],
-    'staff_count'      => [
-        'label'      => 'lang:admin::lang.staff_groups.column_users',
-        'type'       => 'number',
+    'staff_count' => [
+        'label' => 'lang:admin::lang.staff_groups.column_users',
+        'type' => 'number',
         'searchable' => TRUE,
+        'sortable' => FALSE,
     ],
-    'staff_group_id'   => [
-        'label'     => 'lang:admin::lang.column_id',
+    'staff_group_id' => [
+        'label' => 'lang:admin::lang.column_id',
         'invisible' => TRUE,
     ],
 
@@ -34,42 +52,56 @@ $config['list']['columns'] = [
 
 $config['form']['toolbar'] = [
     'buttons' => [
-        'save'      => ['label' => 'lang:admin::lang.button_save', 'class' => 'btn btn-primary', 'data-request-form' => '#edit-form', 'data-request' => 'onSave'],
-        'saveClose' => [
-            'label'             => 'lang:admin::lang.button_save_close',
-            'class'             => 'btn btn-default',
-            'data-request'      => 'onSave',
-            'data-request-form' => '#edit-form',
-            'data-request-data' => 'close:1',
+        'back' => [
+            'label' => 'lang:admin::lang.button_icon_back',
+            'class' => 'btn btn-default',
+            'href' => 'staff_groups',
         ],
-        'delete'    => [
-            'label'                => 'lang:admin::lang.button_icon_delete', 'class' => 'btn btn-danger',
-            'data-request-form'    => '#edit-form', 'data-request' => 'onDelete', 'data-request-data' => "_method:'DELETE'",
-            'data-request-confirm' => 'lang:admin::lang.alert_warning_confirm', 'context' => ['edit'],
+        'save' => [
+            'label' => 'lang:admin::lang.button_save',
+            'class' => 'btn btn-primary',
+            'data-request' => 'onSave',
+            'data-progress-indicator' => 'admin::lang.text_saving',
+        ],
+        'saveClose' => [
+            'label' => 'lang:admin::lang.button_save_close',
+            'class' => 'btn btn-default',
+            'data-request' => 'onSave',
+            'data-request-data' => 'close:1',
+            'data-progress-indicator' => 'admin::lang.text_saving',
+        ],
+        'delete' => [
+            'label' => 'lang:admin::lang.button_icon_delete',
+            'class' => 'btn btn-danger',
+            'data-request' => 'onDelete',
+            'data-request-data' => "_method:'DELETE'",
+            'data-request-confirm' => 'lang:admin::lang.alert_warning_confirm',
+            'data-progress-indicator' => 'admin::lang.text_deleting',
+            'context' => ['edit'],
         ],
     ],
 ];
 
 $config['form']['fields'] = [
-    'staff_group_name'        => [
-        'label' => 'lang:admin::lang.staff_groups.label_name',
-        'type'  => 'text',
+    'staff_group_name' => [
+        'label' => 'lang:admin::lang.label_name',
+        'type' => 'text',
     ],
     'customer_account_access' => [
-        'label'   => 'lang:admin::lang.staff_groups.label_customer_account_access',
-        'type'    => 'switch',
+        'label' => 'lang:admin::lang.staff_groups.label_customer_account_access',
+        'type' => 'switch',
         'comment' => 'lang:admin::lang.staff_groups.help_customer_account_access',
     ],
-    'location_access'         => [
-        'label'   => 'lang:admin::lang.staff_groups.label_location_access',
-        'type'    => 'switch',
+    'location_access' => [
+        'label' => 'lang:admin::lang.staff_groups.label_location_access',
+        'type' => 'switch',
         'comment' => 'lang:admin::lang.staff_groups.help_location',
     ],
-    'permission'              => [
+    'permission' => [
         'label' => 'lang:admin::lang.staff_groups.text_tab_permission',
-        'type'  => 'section',
+        'type' => 'section',
     ],
-    'permissions'             => [
+    'permissions' => [
         'type' => 'permissioneditor',
     ],
 ];

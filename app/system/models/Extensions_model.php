@@ -1,7 +1,9 @@
 <?php namespace System\Models;
 
-use Igniter\Flame\ActivityLog\Traits\LogsActivity;
+use File;
 use Igniter\Flame\Database\Builder;
+use Igniter\Flame\Mail\Markdown;
+use Main\Classes\ThemeManager;
 use Model;
 use System\Classes\ExtensionManager;
 use System\Classes\UpdateManager;
@@ -12,11 +14,6 @@ use System\Classes\UpdateManager;
  */
 class Extensions_model extends Model
 {
-    use LogsActivity;
-
-    //only the `updated` & `deleted` event will get logged automatically
-    protected static $recordEvents = ['updated', 'deleted'];
-
     /**
      * @var string The database table name
      */
@@ -31,6 +28,7 @@ class Extensions_model extends Model
 
     public $casts = [
         'data' => 'serialize',
+        'status' => 'boolean',
     ];
 
     /**
@@ -38,9 +36,12 @@ class Extensions_model extends Model
      */
     protected $extensions = [];
 
-    protected $meta = null;
+    protected $meta;
 
-    protected $class = null;
+    /**
+     * @var \System\Classes\BaseExtension
+     */
+    protected $class;
 
     protected static function boot()
     {
@@ -49,6 +50,22 @@ class Extensions_model extends Model
         static::addGlobalScope('type', function (Builder $builder) {
             $builder->where('type', 'module');
         });
+    }
+
+    public static function onboardingIsComplete()
+    {
+        $activeTheme = ThemeManager::instance()->getActiveTheme();
+        if (!$activeTheme)
+            return FALSE;
+
+        $requiredExtensions = (array)$activeTheme->requires;
+        foreach ($requiredExtensions as $name => $constraint) {
+            $extension = ExtensionManager::instance()->findExtension($name);
+            if (!$extension OR $extension->disabled)
+                return FALSE;
+        }
+
+        return TRUE;
     }
 
     //
@@ -65,6 +82,25 @@ class Extensions_model extends Model
         return $this->class;
     }
 
+    public function getStatusAttribute($value)
+    {
+        return $value AND $this->class AND !$this->class->disabled;
+    }
+
+    public function getVersionAttribute($value)
+    {
+        return array_get($this->meta, 'version', $value);
+    }
+
+    public function getReadmeAttribute($value)
+    {
+        $extensionPath = ExtensionManager::instance()->path($this->name);
+        if (!$readmePath = File::existsInsensitive($extensionPath.'readme.md'))
+            return null;
+
+        return (new Markdown)->parse(File::get($readmePath));
+    }
+
     //
     // Scopes
     //
@@ -78,7 +114,7 @@ class Extensions_model extends Model
     // Events
     //
 
-    public function afterFetch()
+    protected function afterFetch()
     {
         $this->applyExtensionClass();
     }
@@ -86,19 +122,6 @@ class Extensions_model extends Model
     //
     // Helpers
     //
-
-    public function getMessageForEvent($eventName)
-    {
-        if ($eventName == 'updated' AND $this->status == 1)
-            $eventName = strtolower(lang('system::lang.extensions.text_installed'));
-
-        if ($eventName == 'updated' AND $this->status != 1)
-            $eventName = strtolower(lang('system::lang.extensions.text_uninstalled'));
-
-        $replace['event'] = $eventName;
-
-        return parse_values($replace, lang('system::lang.extensions.activity_event_log'));
-    }
 
     /**
      * Sets the extension class as a property of this class
@@ -140,17 +163,17 @@ class Extensions_model extends Model
             $extensionMeta = (object)$extensionClass->extensionMeta();
             $installedExtensions[] = $code;
 
-            // Only add  extensions with no existing record in extensions table
+            // Only add extensions with no existing record in extensions table
             if ($extension = $extensions->where('name', $code)->first()) continue;
 
-            self::create([
-                'type' => 'module',
-                'name' => $code,
-                'title' => $extensionMeta->name,
-                'version' => $extensionMeta->version,
-            ]);
+            $extensionModel = self::make();
+            $extensionModel->type = 'module';
+            $extensionModel->name = $code;
+            $extensionModel->title = $extensionMeta->name;
+            $extensionModel->version = $extensionMeta->version;
+            $extensionModel->save();
 
-            $extensionManager->updateExtension($code, FALSE);
+            $extensionManager->updateInstalledExtensions($code, FALSE);
         }
 
         // Disable extensions not found in file system
@@ -163,28 +186,37 @@ class Extensions_model extends Model
      *
      * @param string $code
      *
+     * @param null $version
      * @return bool|null
      */
-    public static function install($code)
+    public static function install($code, $version = null)
     {
         $extensionModel = self::firstOrNew(['type' => 'module', 'name' => $code]);
         if (!$extensionModel->applyExtensionClass())
             return FALSE;
 
-        if ($extensionModel AND $extensionModel->meta) {
-            $extensionModel->status = TRUE;
-            $extensionModel->fill([
-                'title' => $extensionModel->meta['name'],
-                'version' => $extensionModel->meta['version'],
-            ])->save();
+        $manager = ExtensionManager::instance();
+
+        // Register and boot the extension to make
+        // its services available before migrating
+        if ($extension = $manager->findExtension($extensionModel->name)) {
+            $extension->disabled = FALSE;
+            $manager->registerExtension($extensionModel->name, $extension);
+            $manager->bootExtension($extension);
         }
 
         // set extension migration to the latest version
         UpdateManager::instance()->migrateExtension($extensionModel->name);
 
-        ExtensionManager::instance()->updateExtension(
-            $extensionModel->name, $extensionModel->status
-        );
+        if ($extensionModel AND $extensionModel->meta) {
+            $extensionModel->status = TRUE;
+            $extensionModel->fill([
+                'title' => $extensionModel->meta['name'],
+                'version' => $version ?? $extensionModel->version,
+            ])->save();
+        }
+
+        ExtensionManager::instance()->updateInstalledExtensions($code);
 
         return TRUE;
     }
@@ -206,9 +238,7 @@ class Extensions_model extends Model
             $query = $extensionModel->save();
         }
 
-        ExtensionManager::instance()->updateExtension(
-            $extensionModel->name, $extensionModel->status
-        );
+        ExtensionManager::instance()->updateInstalledExtensions($code, FALSE);
 
         return $query;
     }
@@ -238,7 +268,7 @@ class Extensions_model extends Model
             $extensionManager->removeExtension($code);
 
         // disable extension
-        $extensionManager->updateExtension($code, FALSE);
+        $extensionManager->updateInstalledExtensions($code, null);
 
         return TRUE;
     }

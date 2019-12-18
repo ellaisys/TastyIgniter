@@ -104,11 +104,23 @@ class ComponentManager
             $this->codeMap = [];
         }
 
-        $code = isset($component['code']) ? $component['code'] : strtolower(basename($class_path));
+        if (is_string($component))
+            $component = ['code' => $component];
+
+        $component = array_merge([
+            'code' => null,
+            'name' => 'Component',
+            'description' => null,
+        ], $component);
+
+        $code = $component['code'] ?? strtolower(basename($class_path));
 
         $this->codeMap[$code] = $class_path;
         $this->classMap[$class_path] = $code;
-        $this->components[$code] = array_merge($component, ['path' => $class_path]);
+        $this->components[$code] = array_merge($component, [
+            'code' => $code,
+            'path' => $class_path
+        ]);
 
         if ($extension !== null) {
             $this->extensionMap[$class_path] = $extension;
@@ -221,19 +233,19 @@ class ComponentManager
      */
     public function makeComponent($name, $page = null, $params = [])
     {
-        $class_path = $this->resolve($name);
-        if (!$class_path)
+        $className = $this->resolve($name);
+        if (!$className)
             throw new SystemException(sprintf(
-                'Class name is not registered for the component "%s". Check the component extension.', $name
+                'Component "%s" is not registered.', $name
             ));
 
-        if (!class_exists($class_path))
+        if (!class_exists($className))
             throw new SystemException(sprintf(
-                'Component class not found "%s". Check the component extension.', $class_path
+                'Component class "%s" not found.', $className
             ));
 
         // Create and register the new controller.
-        $component = new $class_path($page, $params);
+        $component = new $className($page, $params);
         $component->name = $name;
 
         return $component;
@@ -290,13 +302,13 @@ class ComponentManager
 
         if ($addAliasProperty) {
             $property = [
-                'property'          => 'alias',
-                'label'             => '',
-                'type'              => 'text',
-                'comment'           => '',
+                'property' => 'alias',
+                'label' => '',
+                'type' => 'text',
+                'comment' => '',
                 'validationPattern' => '^[a-zA-Z]+[0-9a-z\_]*$',
                 'validationMessage' => '',
-                'required'          => TRUE,
+                'required' => TRUE,
                 'showExternalParam' => FALSE,
             ];
             $result['alias'] = $property;
@@ -309,9 +321,9 @@ class ComponentManager
             if (!$this->checkComponentPropertyType($propertyType)) continue;
 
             $property = [
-                'property'          => $name,
-                'label'             => array_get($params, 'label', $name),
-                'type'              => $propertyType,
+                'property' => $name,
+                'label' => array_get($params, 'label', $name),
+                'type' => $propertyType,
                 'showExternalParam' => array_get($params, 'showExternalParam', FALSE),
             ];
 
@@ -373,6 +385,8 @@ class ComponentManager
         return in_array($type, [
             'text',
             'number',
+            'checkbox',
+            'radio',
             'select',
             'selectlist',
             'switch',

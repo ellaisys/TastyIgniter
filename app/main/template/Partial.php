@@ -3,11 +3,11 @@
 namespace Main\Template;
 
 use File;
+use Igniter\Flame\Pagic\Contracts\TemplateSource;
+use Igniter\Flame\Pagic\Exception\MissingFileNameException;
 use Igniter\Flame\Support\Extendable;
 use Illuminate\Support\Collection;
 use Main\Classes\Theme;
-use Main\Contracts\TemplateSource;
-use October\Rain\Halcyon\Exception\MissingFileNameException;
 use Symfony\Component\Finder\Finder;
 
 class Partial extends Extendable implements TemplateSource
@@ -278,11 +278,7 @@ class Partial extends Extendable implements TemplateSource
      */
     public function getMarkup()
     {
-//        $content = "<!-- Partial: {$this->getBaseFileName()} -->".PHP_EOL;
-        $content = $this->content.PHP_EOL;
-
-//        $content .= "<!-- Partial: {$this->getBaseFileName()} -->";
-        return $content;
+        return $this->content.PHP_EOL;
     }
 
     /**

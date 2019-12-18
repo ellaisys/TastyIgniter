@@ -4,17 +4,10 @@ namespace Admin\Traits;
 
 use Admin\Models\Status_history_model;
 use Exception;
-use Igniter\Flame\ActivityLog\Traits\LogsActivity;
 use Igniter\Flame\Database\Model;
 
 trait LogsStatusHistory
 {
-    use LogsActivity;
-
-    protected static $recordEvents = ['updated', 'deleted'];
-
-    protected static $logAttributes = ['status_id', 'assignee_id'];
-
     public static function bootLogsStatusHistory()
     {
         self::extend(function (Model $model) {
@@ -34,11 +27,6 @@ trait LogsStatusHistory
     public function getStatusColorAttribute()
     {
         return $this->getRelatedStatusModel()->status_color;
-    }
-
-    public function getMessageForEvent($eventName)
-    {
-        return parse_values(['event' => $eventName], lang('admin::lang.orders.activity_event_log'));
     }
 
     public function getRelatedStatusModel()
@@ -93,16 +81,6 @@ trait LogsStatusHistory
         if ($previousStatusId != $newStatusId)
             return FALSE;
 
-        $alreadyExists = Status_history_model::alreadyExists($this, $newStatusId);
-        if (!$alreadyExists)
-            return FALSE;
-
-        if ($alreadyExists->comment != $statusData['comment'])
-            return FALSE;
-
-        if ($alreadyExists->notify != $statusData['notify'])
-            return FALSE;
-
-        return TRUE;
+        return Status_history_model::alreadyExists($this, $newStatusId);
     }
 }

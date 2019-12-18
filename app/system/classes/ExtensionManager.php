@@ -1,6 +1,7 @@
 <?php namespace System\Classes;
 
 use App;
+use ApplicationException;
 use File;
 use Igniter\Flame\Traits\Singleton;
 use Lang;
@@ -39,26 +40,34 @@ class ExtensionManager
     protected $installedExtensions = [];
 
     /**
+     * @var array Cache of registration method results.
+     */
+    protected $registrationMethodCache = [];
+
+    /**
      * @var array of extensions and their directory paths.
      */
     protected $paths = [];
 
     /**
-     * @var array used Set whether extensions have been initialized.
+     * @var array used Set whether extensions have been booted.
      */
-    protected $initialized = FALSE;
+    protected $booted = FALSE;
 
     /**
      * @var array used Set whether extensions have been registered.
      */
     protected $registered = FALSE;
 
+    /**
+     * @var string Path to the disarm file.
+     */
+    protected $metaFile;
+
     public function initialize()
     {
-        // This prevents reading settings from the database before its been created
-        if (App::hasDatabase())
-            $this->loadInstalled();
-
+        $this->metaFile = storage_path('system/installed.json');
+        $this->loadInstalled();
         $this->loadExtensions();
 
         if (App::runningInAdmin()) {
@@ -78,7 +87,7 @@ class ExtensionManager
     {
         foreach ($this->folders() as $extensionFolder) {
 
-            $extension = $this->checkName($extension);
+            $extension = $this->getNamePath($this->checkName($extension));
 
             // Check each folder for the extension's folder.
             if (File::isDirectory("{$extensionFolder}/{$extension}")) {
@@ -226,7 +235,7 @@ class ExtensionManager
                 $enable = !(!$extensionObj OR $extensionObj->disabled);
             }
 
-            $this->updateExtension($code, $enable);
+            $this->updateInstalledExtensions($code, $enable);
         }
     }
 
@@ -242,10 +251,16 @@ class ExtensionManager
         if (is_string($extension) AND (!$extension = $this->findExtension($extension)))
             return FALSE;
 
-        if (!isset($extension->require) OR !$extension->require)
+        if (!$require = array_get($extension->extensionMeta(), 'require'))
             return null;
 
-        return (array)$extension->require;
+        if (!is_array($require))
+            $require = [$require];
+
+        if (!isset($require[0]))
+            $require = array_keys($require);
+
+        return $require;
     }
 
     /**
@@ -262,16 +277,28 @@ class ExtensionManager
             $extensions = $this->getExtensions();
 
         $result = [];
-        foreach ($extensions as $code => $extension) {
-            $depends = $this->getDependencies($extension) ?: [];
-            $depends = array_filter($depends, function ($dependCode) use ($extensions) {
-                return isset($extensions[$dependCode]);
-            });
+        $checklist = $extensions;
 
-            if (count($depends) > 0)
-                array_push($result, $code);
+        $loopCount = 0;
+        while (count($checklist) > 0) {
 
-            $result[] = $code;
+            if (++$loopCount > 999) {
+                throw new ApplicationException('Too much recursion');
+            }
+
+            foreach ($checklist as $code => $extension) {
+                $depends = $this->getDependencies($extension) ?: [];
+                $depends = array_filter($depends, function ($dependCode) use ($extensions) {
+                    return isset($extensions[$dependCode]);
+                });
+
+                $depends = array_diff($depends, $result);
+                if (count($depends) > 0)
+                    continue;
+
+                $result[] = $code;
+                unset($checklist[$code]);
+            }
         }
 
         return $result;
@@ -370,30 +397,30 @@ class ExtensionManager
     }
 
     /**
-     * Runs the initialize() method on all extensions. Can only be called once.
+     * Runs the boot() method on all extensions. Can only be called once.
      * @return void
      */
-    public function initializeExtensions()
+    public function bootExtensions()
     {
-        if ($this->initialized) {
+        if ($this->booted) {
             return;
         }
 
         foreach ($this->extensions as $name => $extension) {
-            $this->initializeExtension($extension);
+            $this->bootExtension($extension);
         }
 
-        $this->initialized = TRUE;
+        $this->booted = TRUE;
     }
 
     /**
-     * Initialize a single extension.
+     * Boot a single extension.
      *
      * @param \System\Classes\BaseExtension $extension
      *
      * @return void
      */
-    public function initializeExtension($extension = null)
+    public function bootExtension($extension = null)
     {
         if (!$extension) {
             return;
@@ -403,7 +430,7 @@ class ExtensionManager
             return;
         }
 
-        $extension->initialize();
+        $extension->boot();
     }
 
     /**
@@ -503,24 +530,6 @@ class ExtensionManager
     }
 
     /**
-     * Returns a extension registration class based on its name.
-     *
-     * @param $name
-     *
-     * @return mixed|null
-     */
-    public function findRequiredExtensions($name)
-    {
-        if (!$extension = $this->findExtension($name)) {
-            return null;
-        }
-
-        $meta = $extension->extensionMeta();
-
-        return isset($meta['required']) ? $meta['required'] : null;
-    }
-
-    /**
      * Checks to see if an extension name is well formed.
      *
      * @param $name
@@ -592,29 +601,62 @@ class ExtensionManager
     }
 
     /**
+     * Spins over every extension object and collects the results of a method call.
+     * @param  string $methodName
+     * @return array
+     */
+    public function getRegistrationMethodValues($methodName)
+    {
+        if (isset($this->registrationMethodCache[$methodName])) {
+            return $this->registrationMethodCache[$methodName];
+        }
+
+        $results = [];
+        $extensions = $this->getExtensions();
+        foreach ($extensions as $id => $extension) {
+            if (!method_exists($extension, $methodName)) {
+                continue;
+            }
+
+            $results[$id] = $extension->{$methodName}();
+        }
+
+        return $this->registrationMethodCache[$methodName] = $results;
+    }
+
+    /**
      * Loads all installed extension from application config.
      */
     public function loadInstalled()
     {
-        if (($installedExtensions = setting('installed_extensions')) AND is_array($installedExtensions)) {
-            $this->installedExtensions = $installedExtensions;
-        }
+        if (!File::exists($this->metaFile))
+            return;
+
+        $this->installedExtensions = json_decode(File::get($this->metaFile), TRUE) ?: [];
     }
 
     /**
      * @param string $code
-     * @param bool $disable
-     *
+     * @param bool $enable
      * @return bool
      */
-    public function updateExtension($code, $enable = TRUE)
+    public function updateInstalledExtensions($code, $enable = TRUE)
     {
         $code = $this->getIdentifier($code);
 
-        $this->installedExtensions[$code] = $enable;
+        if (!$this->installedExtensions)
+            $this->readInstalledExtensionsFromDb();
+
+        if (is_null($enable)) {
+            array_pull($this->installedExtensions, $code);
+        }
+        else {
+            $this->installedExtensions[$code] = $enable;
+        }
+
         $this->saveInstalled();
 
-        if (!$enable AND $extension = $this->findExtension($code)) {
+        if ($enable === FALSE AND $extension = $this->findExtension($code)) {
             $extension->disabled = TRUE;
         }
 
@@ -683,9 +725,22 @@ class ExtensionManager
         return $extensionCode;
     }
 
+    /**
+     * Write the installed extensions to a meta file.
+     */
     protected function saveInstalled()
     {
-        setting()->set('installed_extensions', $this->installedExtensions);
-        setting()->save();
+        File::put($this->metaFile, json_encode($this->installedExtensions));
+    }
+
+    protected function readInstalledExtensionsFromDb()
+    {
+        if (!App::hasDatabase() OR !App::bound('system.setting'))
+            return;
+
+        if (($installedExtensions = setting('installed_extensions')) AND is_array($installedExtensions)) {
+            $this->installedExtensions = array_dot($installedExtensions);
+            setting()->forget('installed_extensions');
+        }
     }
 }

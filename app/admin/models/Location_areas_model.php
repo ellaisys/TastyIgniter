@@ -2,16 +2,16 @@
 
 namespace Admin\Models;
 
-use Igniter\Flame\Location\Models\Area as AreaModel;
+use Igniter\Flame\Location\Models\AbstractArea;
 
 /**
  * Location areas Model Class
  *
  * @package Admin
  */
-class Location_areas_model extends AreaModel
+class Location_areas_model extends AbstractArea
 {
-    protected $fillable = ['area_id', 'type', 'name', 'boundaries', 'conditions'];
+    protected $fillable = ['area_id', 'type', 'name', 'boundaries', 'conditions', 'is_default'];
 
     public $boundary;
 
@@ -31,7 +31,11 @@ class Location_areas_model extends AreaModel
         return $conditions;
     }
 
-    //
-    // Helpers
-    //
+    protected function afterSave()
+    {
+        if (!$this->is_default)
+            return;
+
+        $this->newQuery()->whereKeyNot($this->getKey())->update(['is_default' => 0]);
+    }
 }

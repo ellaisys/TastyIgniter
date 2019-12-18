@@ -11,6 +11,8 @@ class Staffs_model extends Model
 {
     use Purgeable;
 
+    const UPDATED_AT = null;
+
     const CREATED_AT = 'date_added';
 
     /**
@@ -28,15 +30,21 @@ class Staffs_model extends Model
      */
     public $timestamps = TRUE;
 
-    protected $fillable = ['staff_name', 'staff_email', 'staff_group_id', 'staff_location_id', 'timezone',
-        'language_id', 'date_added', 'staff_status'];
+    protected $guarded = [];
+
+    public $casts = [
+        'staff_group_id' => 'integer',
+        'staff_location_id' => 'integer',
+        'language_id' => 'integer',
+        'staff_status' => 'boolean',
+    ];
 
     public $relation = [
-        'hasOne'    => [
+        'hasOne' => [
             'user' => ['Admin\Models\Users_model', 'foreignKey' => 'staff_id', 'otherKey' => 'staff_id'],
         ],
         'belongsTo' => [
-            'group'    => ['Admin\Models\Staff_groups_model', 'foreignKey' => 'staff_group_id'],
+            'group' => ['Admin\Models\Staff_groups_model', 'foreignKey' => 'staff_group_id'],
             'location' => ['Admin\Models\Locations_model', 'foreignKey' => 'staff_location_id'],
             'language' => ['System\Models\Languages_model'],
         ],
@@ -76,11 +84,18 @@ class Staffs_model extends Model
         return $query->where('staff_status', 1);
     }
 
+    public function scopeWhereNotSuperUser($query)
+    {
+        $query->whereHas('user', function ($q) {
+            $q->where('super_user', '!=', 1);
+        });
+    }
+
     //
     // Events
     //
 
-    public function afterSave()
+    protected function afterSave()
     {
         $this->restorePurgedValues();
 

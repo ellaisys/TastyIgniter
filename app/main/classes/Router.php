@@ -118,7 +118,7 @@ class Router
                         Cache::put(
                             $this->getUrlListCacheKey(),
                             base64_encode(serialize($urlList)),
-                            Config::get('system.urlMapCacheTtl', 1)
+                            Config::get('system.urlMapCacheTtl', now()->addMinute())
                         );
                     }
                 }
@@ -159,9 +159,7 @@ class Router
             $fileName .= '.php';
         }
 
-        $router = $this->getRouterObject();
-
-        return $router->url($fileName, $parameters);
+        return $this->getRouterObject()->url($fileName, $parameters);
     }
 
     /**
@@ -227,7 +225,7 @@ class Router
                 Cache::put(
                     $this->getUrlMapCacheKey(),
                     base64_encode(serialize($map)),
-                    Config::get('system.urlMapCacheTtl', 1)
+                    Config::get('system.urlMapCacheTtl', now()->addMinute())
                 );
             }
 

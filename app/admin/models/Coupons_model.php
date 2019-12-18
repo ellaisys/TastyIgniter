@@ -1,8 +1,8 @@
 <?php namespace Admin\Models;
 
 use Carbon\Carbon;
-use Igniter\Flame\ActivityLog\Traits\LogsActivity;
 use Igniter\Flame\Auth\Models\User;
+use Igniter\Flame\Location\Models\AbstractLocation;
 use Model;
 
 /**
@@ -12,9 +12,13 @@ use Model;
  */
 class Coupons_model extends Model
 {
-    use LogsActivity;
+    use \Admin\Traits\Locationable;
+
+    const UPDATED_AT = null;
 
     const CREATED_AT = 'date_added';
+
+    const LOCATIONABLE_RELATION = 'locations';
 
     /**
      * @var string The database table name
@@ -26,29 +30,38 @@ class Coupons_model extends Model
      */
     protected $primaryKey = 'coupon_id';
 
-    public $timestamps = TRUE;
-
     protected $timeFormat = 'H:i';
 
+    public $timestamps = TRUE;
+
     public $casts = [
-        'period_start_date'   => 'date',
-        'period_end_date'     => 'date',
-        'fixed_date'          => 'date',
-        'fixed_from_time'     => 'time',
-        'fixed_to_time'       => 'time',
+        'discount' => 'float',
+        'min_total' => 'float',
+        'redemptions' => 'integer',
+        'customer_redemptions' => 'integer',
+        'status' => 'boolean',
+        'period_start_date' => 'date',
+        'period_end_date' => 'date',
+        'fixed_date' => 'date',
+        'fixed_from_time' => 'time',
+        'fixed_to_time' => 'time',
         'recurring_from_time' => 'time',
-        'recurring_to_time'   => 'time',
+        'recurring_to_time' => 'time',
+        'order_restriction' => 'integer',
     ];
 
     public $relation = [
         'hasMany' => [
             'history' => 'Admin\Models\Coupons_history_model',
         ],
+        'morphToMany' => [
+            'locations' => ['Admin\Models\Locations_model', 'name' => 'locationable'],
+        ],
     ];
 
     public function getRecurringEveryOptions()
     {
-        return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     }
 
     //
@@ -57,17 +70,18 @@ class Coupons_model extends Model
 
     public function getRecurringEveryAttribute($value)
     {
-        return (empty($value)) ? [0, 1, 2, 3, 4, 5, 6] : explode(', ', $value);
+        return empty($value) ? [0, 1, 2, 3, 4, 5, 6] : explode(', ', $value);
     }
 
     public function setRecurringEveryAttribute($value)
     {
-        return (empty($value)) ? [] : implode(', ', $value);
+        $this->attributes['recurring_every'] = empty($value)
+            ? null : implode(', ', $value);
     }
 
     public function getTypeNameAttribute($value)
     {
-        return ($this->type == 'P') ? lang('admin::coupons.text_percentage') : lang('admin::coupons.text_fixed_amount');
+        return ($this->type == 'P') ? lang('admin::lang.coupons.text_percentage') : lang('admin::lang.coupons.text_fixed_amount');
     }
 
     public function getFormattedDiscountAttribute($value)
@@ -88,11 +102,6 @@ class Coupons_model extends Model
     // Helpers
     //
 
-    public function getMessageForEvent($eventName)
-    {
-        return parse_values(['event' => $eventName], lang('admin::coupons.activity_event_log'));
-    }
-
     public function isFixed()
     {
         return $this->type == 'F';
@@ -105,7 +114,7 @@ class Coupons_model extends Model
 
     public function minimumOrderTotal()
     {
-        return $this->min_total;
+        return $this->min_total ?: 0;
     }
 
     public function isExpired()
@@ -116,14 +125,20 @@ class Coupons_model extends Model
             case 'forever':
                 return FALSE;
             case 'fixed':
-                return $this->fixed_date->eq($now) AND !$now->between($this->fixed_from_time, $this->fixed_to_time);
+                $start = $this->fixed_date->copy()->setTimeFromTimeString($this->fixed_from_time);
+                $end = $this->fixed_date->copy()->setTimeFromTimeString($this->fixed_to_time);
+
+                return !$now->between($start, $end);
             case 'period':
-                return $now->between($this->period_start_date, $this->period_end_date) ? FALSE : TRUE;
+                return !$now->between($this->period_start_date, $this->period_end_date);
             case 'recurring':
-                if (!in_array($now->format('l'), $this->recurring_every))
+                if (!in_array($now->format('w'), $this->recurring_every))
                     return TRUE;
 
-                return $now->between($this->recurring_from_time, $this->recurring_to_time) ? FALSE : TRUE;
+                $start = $now->copy()->setTimeFromTimeString($this->recurring_from_time);
+                $end = $now->copy()->setTimeFromTimeString($this->recurring_to_time);
+
+                return !$now->between($start, $end);
         }
 
         return FALSE;
@@ -131,21 +146,32 @@ class Coupons_model extends Model
 
     public function hasRestriction($orderType)
     {
-        if (is_null($this->order_restriction))
-            FALSE;
+        if (empty($this->order_restriction))
+            return FALSE;
 
-        return $orderType != $this->order_restriction;
+        $orderTypes = [AbstractLocation::DELIVERY => 1, AbstractLocation::COLLECTION => 2];
+
+        return array_get($orderTypes, $orderType, $orderType) != $this->order_restriction;
+    }
+
+    public function hasLocationRestriction($locationId)
+    {
+        if (!$this->locations OR $this->locations->isEmpty())
+            return FALSE;
+
+        $locationKeyColumn = $this->locations()->getModel()->qualifyColumn('location_id');
+
+        return !$this->locations()->where($locationKeyColumn, $locationId)->exists();
     }
 
     public function hasReachedMaxRedemption()
     {
-        return !$this->redemptions OR $this->redemptions <= $this->countRedemptions();
+        return $this->redemptions AND $this->redemptions <= $this->countRedemptions();
     }
 
     public function customerHasMaxRedemption(User $user)
     {
-        return !$this->customer_redemptions
-            OR $this->customer_redemptions <= $this->countCustomerRedemptions($user->getKey());
+        return $this->customer_redemptions AND $this->customer_redemptions <= $this->countCustomerRedemptions($user->getKey());
     }
 
     public function countRedemptions()
